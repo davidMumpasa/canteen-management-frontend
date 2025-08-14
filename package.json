@@ -20,6 +20,7 @@
     "expo-status-bar": "~2.2.3",
     "is-arrayish": "^0.3.2",
     "jwt-decode": "^4.0.0",
+    "lucide-react": "^0.539.0",
     "react": "19.0.0",
     "react-native": "0.79.5",
     "react-native-gesture-handler": "~2.24.0",

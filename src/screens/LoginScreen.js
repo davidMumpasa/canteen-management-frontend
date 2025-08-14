@@ -56,7 +56,8 @@ const LoginScreen = ({ navigation }) => {
       // console.log("---------------------------");
 
       Alert.alert("Success", "Login successful");
-      navigation.navigate("Home");
+      // navigation.navigate("Home");
+      navigation.replace("Main");
     } catch (err) {
       Alert.alert("Login Error", err.message);
     } finally {
