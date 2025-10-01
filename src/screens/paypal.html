@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PayPal Payment Debug Tool</title>
+
+    <!-- PayPal SDK with proper error handling -->
+    <script
+      src="https://www.paypal.com/sdk/js?client-id=AfaB_5QLNFDrS7YTwNUTp72HxOk22PrIJ9FKj_eIkDNB_63b42qpeoQXatRAXZIxpUZA5rsG5m8qOTHp&currency=USD"
+      onload="onPayPalSDKLoaded()"
+      onerror="onPayPalSDKError()"
+    ></script>
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .debug-container {
+        max-width: 1000px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      }
+
+      h1 {
+        text-align: center;
+        color: #1f2937;
+        margin-bottom: 30px;
+        font-size: 28px;
+      }
+
+      .debug-section {
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+
+      .debug-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #374151;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .debug-log {
+        background: #1f2937;
+        color: #10b981;
+        border-radius: 8px;
+        padding: 15px;
+        font-family: "SF Mono", "Monaco", "Courier New", monospace;
+        font-size: 12px;
+        max-height: 250px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        border: 1px solid #374151;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 25px;
+      }
+
+      .status-item {
+        background: white;
+        border: 2px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        transition: all 0.3s ease;
+      }
+
+      .status-item.success {
+        border-color: #10b981;
+        background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+      }
+
+      .status-item.error {
+        border-color: #ef4444;
+        background: linear-gradient(135deg, #fef2f2, #fee2e2);
+      }
+
+      .status-item.warning {
+        border-color: #f59e0b;
+        background: linear-gradient(135deg, #fffbeb, #fef3c7);
+      }
+
+      .status-label {
+        font-size: 12px;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+        margin-bottom: 5px;
+      }
+
+      .status-value {
+        font-size: 16px;
+        font-weight: bold;
+        margin-top: 5px;
+        color: #1f2937;
+      }
+
+      .payment-section {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 25px;
+        margin-top: 25px;
+      }
+
+      .payment-details {
+        background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+        border-radius: 16px;
+        padding: 25px;
+        border: 1px solid #d1d5db;
+      }
+
+      .detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      }
+
+      .detail-label {
+        font-size: 14px;
+        color: #6b7280;
+        font-weight: 500;
+      }
+
+      .detail-value {
+        font-weight: 600;
+        color: #1f2937;
+      }
+
+      .amount-display {
+        font-size: 36px;
+        font-weight: 800;
+        color: #059669;
+        text-align: center;
+        margin: 20px 0;
+        padding: 20px;
+        background: white;
+        border-radius: 12px;
+        border: 2px solid #10b981;
+        cursor: pointer;
+        transition: transform 0.2s ease;
+      }
+
+      .amount-display:hover {
+        transform: scale(1.02);
+      }
+
+      .paypal-container {
+        background: white;
+        border-radius: 16px;
+        padding: 25px;
+        border: 2px solid #e5e7eb;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      }
+
+      #paypal-button-container {
+        min-height: 60px;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 30px 20px;
+        color: #6b7280;
+        background: #f9fafb;
+        border-radius: 8px;
+        border: 2px dashed #d1d5db;
+      }
+
+      .spinner {
+        width: 24px;
+        height: 24px;
+        border: 3px solid #e5e7eb;
+        border-top: 3px solid #0070ba;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-right: 12px;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .message {
+        padding: 15px;
+        border-radius: 8px;
+        margin: 10px 0;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .error-message {
+        background: #fee2e2;
+        color: #dc2626;
+        border: 1px solid #fca5a5;
+      }
+
+      .success-message {
+        background: #dcfce7;
+        color: #166534;
+        border: 1px solid #86efac;
+      }
+
+      .info-message {
+        background: #dbeafe;
+        color: #1e40af;
+        border: 1px solid #93c5fd;
+      }
+
+      .warning-message {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 25px;
+      }
+
+      button {
+        background: linear-gradient(135deg, #0070ba, #005a9c);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      button:hover:not(:disabled) {
+        background: linear-gradient(135deg, #005a9c, #004080);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 112, 186, 0.3);
+      }
+
+      button:active:not(:disabled) {
+        transform: translateY(0);
+      }
+
+      button:disabled {
+        background: #9ca3af;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .button-secondary {
+        background: linear-gradient(135deg, #6b7280, #4b5563) !important;
+      }
+
+      .button-success {
+        background: linear-gradient(135deg, #10b981, #059669) !important;
+      }
+
+      .button-danger {
+        background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+      }
+
+      .timestamp {
+        color: #9ca3af;
+        font-size: 10px;
+        margin-left: 8px;
+      }
+
+      .stats-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        font-size: 12px;
+        color: #6b7280;
+      }
+
+      .environment-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #fef3c7;
+        color: #92400e;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid #fcd34d;
+      }
+
+      .live-badge {
+        background: #dcfce7;
+        color: #166534;
+        border-color: #86efac;
+      }
+
+      @media (max-width: 768px) {
+        .debug-container {
+          padding: 20px;
+          margin: 10px;
+        }
+
+        .payment-section {
+          grid-template-columns: 1fr;
+        }
+
+        .status-grid {
+          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        }
+
+        .controls {
+          flex-direction: column;
+        }
+
+        .amount-display {
+          font-size: 28px;
+        }
+
+        h1 {
+          font-size: 24px;
+        }
+      }
+
+      /* PayPal button styling fixes */
+      .paypal-buttons {
+        border-radius: 8px !important;
+      }
+
+      /* Smooth animations */
+      .fade-in {
+        animation: fadeIn 0.5s ease-in;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="debug-container">
+      <h1>🔍 PayPal Payment Debug Tool</h1>
+
+      <div class="debug-section">
+        <div class="stats-row">
+          <span
+            >Environment:
+            <span class="environment-badge" id="env-badge"
+              >🧪 Sandbox</span
+            ></span
+          >
+          <span>Session: <span id="session-id"></span></span>
+          <span>Last Updated: <span id="last-updated"></span></span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button onclick="reinitializePayPal()" id="reload-btn">
+          🔄 Reload PayPal
+        </button>
+        <button onclick="testConnection()" class="button-secondary">
+          🌐 Test Connection
+        </button>
+        <button onclick="clearDebugLog()" class="button-secondary">
+          🗑️ Clear Log
+        </button>
+        <button onclick="simulatePayment()" class="button-success">
+          💳 Test Payment Flow
+        </button>
+        <button onclick="exportDebugData()" class="button-secondary">
+          📥 Export Debug Data
+        </button>
+      </div>
+
+      <div class="status-grid">
+        <div class="status-item" id="sdk-status">
+          <div class="status-label">PayPal SDK</div>
+          <div class="status-value" id="sdk-value">Loading...</div>
+        </div>
+
+        <div class="status-item" id="button-status">
+          <div class="status-label">Button Status</div>
+          <div class="status-value" id="button-value">Waiting...</div>
+        </div>
+
+        <div class="status-item" id="connection-status">
+          <div class="status-label">API Connection</div>
+          <div class="status-value" id="connection-value">Testing...</div>
+        </div>
+
+        <div class="status-item" id="client-status">
+          <div class="status-label">Client Configuration</div>
+          <div class="status-value" id="client-value">Validating...</div>
+        </div>
+      </div>
+
+      <div class="debug-section">
+        <div class="debug-title">
+          📋 Debug Log
+          <button
+            onclick="toggleLogAutoScroll()"
+            style="margin-left: auto; font-size: 12px; padding: 4px 8px"
+            id="autoscroll-btn"
+          >
+            📌 Auto-scroll: ON
+          </button>
+        </div>
+        <div class="debug-log" id="debug-log">
+          Initializing debug session...\n
+        </div>
+      </div>
+
+      <div class="payment-section">
+        <div class="payment-details">
+          <div class="debug-title">💰 Payment Configuration</div>
+
+          <div class="detail-row">
+            <span class="detail-label">Order ID:</span>
+            <span class="detail-value" id="order-id">TEST123</span>
+          </div>
+
+          <div class="detail-row">
+            <span class="detail-label">Currency:</span>
+            <span class="detail-value">USD</span>
+          </div>
+
+          <div class="detail-row">
+            <span class="detail-label">Environment:</span>
+            <span class="detail-value">Sandbox</span>
+          </div>
+
+          <div
+            class="amount-display"
+            id="amount-display"
+            onclick="cycleAmount()"
+            title="Click to test different amounts"
+          >
+            $10.00
+          </div>
+
+          <div
+            style="
+              text-align: center;
+              color: #6b7280;
+              font-size: 12px;
+              margin-top: 10px;
+            "
+          >
+            💡 Click amount to test different values
+          </div>
+        </div>
+
+        <div class="paypal-container">
+          <div class="debug-title">🔘 PayPal Integration</div>
+          <div id="paypal-button-container">
+            <div class="loading">
+              <div class="spinner"></div>
+              Initializing PayPal SDK...
+            </div>
+          </div>
+          <div id="payment-messages"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Global state management
+      const debugState = {
+        paymentDetails: {
+          amount: "10.00",
+          orderID: "TEST123",
+        },
+        debugLog: [],
+        paypalInitialized: false,
+        sdkLoaded: false,
+        autoScroll: true,
+        sessionId: generateSessionId(),
+        startTime: Date.now(),
+      };
+
+      // Available test amounts
+      const TEST_AMOUNTS = [
+        "5.00",
+        "10.00",
+        "25.00",
+        "50.00",
+        "100.00",
+        "999.99",
+      ];
+
+      function generateSessionId() {
+        return "DBG-" + Math.random().toString(36).substr(2, 9).toUpperCase();
+      }
+
+      function updateLastUpdated() {
+        document.getElementById("last-updated").textContent =
+          new Date().toLocaleTimeString();
+      }
+
+      function log(message, type = "info", showInUI = true) {
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = `[${timestamp}] ${type.toUpperCase()}: ${message}`;
+        debugState.debugLog.push({
+          timestamp: Date.now(),
+          message: logEntry,
+          type: type,
+        });
+
+        if (showInUI) {
+          updateDebugLog();
+        }
+
+        // Enhanced console logging with colors
+        const styles = {
+          info: "color: #3b82f6",
+          success: "color: #10b981",
+          error: "color: #ef4444",
+          warning: "color: #f59e0b",
+        };
+
+        console.log(
+          `%cPayPal Debug [${type.toUpperCase()}]: ${message}`,
+          styles[type] || styles.info
+        );
+        updateLastUpdated();
+      }
+
+      function updateDebugLog() {
+        const debugElement = document.getElementById("debug-log");
+        const recentLogs = debugState.debugLog.slice(-50); // Keep last 50 entries
+        debugElement.textContent = recentLogs
+          .map((entry) => entry.message)
+          .join("\n");
+
+        if (debugState.autoScroll) {
+          debugElement.scrollTop = debugElement.scrollHeight;
+        }
+      }
+
+      function toggleLogAutoScroll() {
+        debugState.autoScroll = !debugState.autoScroll;
+        const btn = document.getElementById("autoscroll-btn");
+        btn.textContent = `📌 Auto-scroll: ${
+          debugState.autoScroll ? "ON" : "OFF"
+        }`;
+        log(
+          `Auto-scroll ${debugState.autoScroll ? "enabled" : "disabled"}`,
+          "info"
+        );
+      }
+
+      function updateStatus(elementId, value, status = null) {
+        const statusElement = document.getElementById(elementId);
+        const valueElement = document.getElementById(
+          elementId.replace("-status", "-value")
+        );
+
+        if (valueElement) {
+          valueElement.textContent = value;
+        }
+
+        if (statusElement) {
+          statusElement.className = "status-item";
+          if (status === true) {
+            statusElement.classList.add("success");
+          } else if (status === false) {
+            statusElement.classList.add("error");
+          } else if (status === "warning") {
+            statusElement.classList.add("warning");
+          }
+        }
+      }
+
+      function showMessage(message, type = "info", duration = 5000) {
+        const messagesDiv = document.getElementById("payment-messages");
+        const messageElement = document.createElement("div");
+        messageElement.className = `message ${type}-message fade-in`;
+        messageElement.textContent = message;
+
+        messagesDiv.appendChild(messageElement);
+
+        setTimeout(() => {
+          messageElement.style.opacity = "0";
+          setTimeout(() => messageElement.remove(), 300);
+        }, duration);
+
+        log(`UI Message [${type}]: ${message}`, type);
+      }
+
+      function clearDebugLog() {
+        debugState.debugLog = [];
+        document.getElementById("debug-log").textContent =
+          "Debug log cleared...\n";
+        log("Debug log cleared by user", "info");
+      }
+
+      function exportDebugData() {
+        const debugData = {
+          sessionId: debugState.sessionId,
+          timestamp: new Date().toISOString(),
+          paymentDetails: debugState.paymentDetails,
+          logs: debugState.debugLog,
+          browserInfo: {
+            userAgent: navigator.userAgent,
+            viewport: `${window.innerWidth}x${window.innerHeight}`,
+            url: window.location.href,
+          },
+        };
+
+        const dataStr = JSON.stringify(debugData, null, 2);
+        const dataBlob = new Blob([dataStr], { type: "application/json" });
+        const url = URL.createObjectURL(dataBlob);
+
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `paypal-debug-${debugState.sessionId}.json`;
+        link.click();
+
+        URL.revokeObjectURL(url);
+        log("Debug data exported", "success");
+      }
+
+      async function testConnection() {
+        log("Testing PayPal API connectivity...", "info");
+        updateStatus("connection-status", "Testing...", null);
+
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+          const response = await fetch(
+            "https://www.paypal.com/sdk/js?client-id=test",
+            {
+              method: "HEAD",
+              signal: controller.signal,
+            }
+          );
+
+          clearTimeout(timeoutId);
+
+          if (response.ok) {
+            log("✅ PayPal API connection successful", "success");
+            updateStatus("connection-status", "Connected", true);
+            showMessage("API connection successful!", "success");
+          } else {
+            throw new Error(`HTTP ${response.status}`);
+          }
+        } catch (error) {
+          const errorMsg =
+            error.name === "AbortError" ? "Connection timeout" : error.message;
+          log(`❌ Connection test failed: ${errorMsg}`, "error");
+          updateStatus("connection-status", "Failed", false);
+          showMessage(`Connection failed: ${errorMsg}`, "error");
+        }
+      }
+
+      function validateClientId() {
+        const clientId =
+          "AfaB_5QLNFDrS7YTwNUTp72HxOk22PrIJ9FKj_eIkDNB_63b42qpeoQXatRAXZIxpUZA5rsG5m8qOTHp";
+
+        if (clientId.length < 50) {
+          log("⚠️ Client ID appears to be invalid (too short)", "warning");
+          updateStatus("client-status", "Invalid", false);
+          return false;
+        }
+
+        log("✅ Client ID format validation passed", "success");
+        updateStatus("client-status", "Valid Sandbox", true);
+        return true;
+      }
+
+      function onPayPalSDKLoaded() {
+        debugState.sdkLoaded = true;
+        log("✅ PayPal SDK script loaded successfully", "success");
+
+        // Small delay to ensure paypal object is fully available
+        setTimeout(() => {
+          if (typeof paypal !== "undefined" && paypal.Buttons) {
+            updateStatus("sdk-status", "Ready", true);
+            validateClientId();
+            initializePayPal();
+          } else {
+            onPayPalSDKError();
+          }
+        }, 100);
+      }
+
+      function onPayPalSDKError() {
+        log("❌ PayPal SDK failed to load", "error");
+        updateStatus("sdk-status", "Failed", false);
+        updateStatus("button-status", "SDK Error", false);
+
+        document.getElementById("paypal-button-container").innerHTML =
+          '<div class="error-message">⚠️ PayPal SDK failed to load. Please check your internet connection and refresh the page.</div>';
+      }
+
+      function initializePayPal() {
+        if (debugState.paypalInitialized) {
+          log("⚠️ PayPal already initialized, skipping...", "warning");
+          return;
+        }
+
+        log("🔄 Initializing PayPal Buttons...", "info");
+        updateStatus("button-status", "Initializing...", null);
+
+        document.getElementById("paypal-button-container").innerHTML = "";
+
+        try {
+          paypal
+            .Buttons({
+              style: {
+                layout: "vertical",
+                color: "blue",
+                shape: "rect",
+                label: "paypal",
+                height: 50,
+                tagline: false,
+              },
+
+              createOrder: function (data, actions) {
+                log("🔄 Creating PayPal order...", "info");
+                showMessage("Creating payment order...", "info", 3000);
+
+                const orderData = {
+                  purchase_units: [
+                    {
+                      amount: {
+                        value: debugState.paymentDetails.amount,
+                        currency_code: "USD",
+                      },
+                      reference_id: debugState.paymentDetails.orderID,
+                      description: "PayPal Debug Tool Test Payment",
+                    },
+                  ],
+                };
+
+                log(
+                  `Order data: ${JSON.stringify(orderData, null, 2)}`,
+                  "info"
+                );
+
+                return actions.order
+                  .create(orderData)
+                  .then(function (orderID) {
+                    log(
+                      `✅ Order created successfully with ID: ${orderID}`,
+                      "success"
+                    );
+                    return orderID;
+                  })
+                  .catch(function (error) {
+                    log(`❌ Order creation failed: ${error.message}`, "error");
+                    throw error;
+                  });
+              },
+
+              onApprove: function (data, actions) {
+                log(
+                  "✅ Payment approved by user, capturing funds...",
+                  "success"
+                );
+                showMessage("Payment approved! Processing...", "success");
+
+                return actions.order
+                  .capture()
+                  .then(function (orderDetails) {
+                    log("✅ Payment captured successfully!", "success");
+                    log(
+                      `Capture details: ${JSON.stringify(
+                        orderDetails,
+                        null,
+                        2
+                      )}`,
+                      "info"
+                    );
+
+                    showMessage(
+                      "🎉 Payment completed successfully!",
+                      "success",
+                      8000
+                    );
+
+                    // Simulate WebView message to React Native
+                    setTimeout(() => {
+                      const message = {
+                        status: "success",
+                        reference: data.orderID,
+                        message: "Transaction completed successfully",
+                        amount: debugState.paymentDetails.amount,
+                        orderDetails: orderDetails,
+                      };
+
+                      log(
+                        `📱 Would send to React Native: ${JSON.stringify(
+                          message
+                        )}`,
+                        "info"
+                      );
+                      showMessage(
+                        "✅ Success message ready for React Native",
+                        "info"
+                      );
+                    }, 1000);
+                  })
+                  .catch(function (error) {
+                    log(`❌ Payment capture failed: ${error.message}`, "error");
+                    showMessage(`Capture failed: ${error.message}`, "error");
+                  });
+              },
+
+              onCancel: function (data) {
+                log("⚠️ Payment cancelled by user", "warning");
+                showMessage("Payment was cancelled", "warning");
+
+                const message = {
+                  status: "cancelled",
+                  message: "Payment cancelled by user",
+                  orderID: data.orderID,
+                };
+
+                log(
+                  `📱 Would send to React Native: ${JSON.stringify(message)}`,
+                  "info"
+                );
+              },
+
+              onError: function (err) {
+                log(`❌ PayPal error occurred: ${err.toString()}`, "error");
+                showMessage(`Payment error: ${err.toString()}`, "error");
+                updateStatus("button-status", "Error", false);
+
+                const message = {
+                  status: "failed",
+                  message: "Payment processing failed",
+                  error: err.toString(),
+                };
+
+                log(
+                  `📱 Would send to React Native: ${JSON.stringify(message)}`,
+                  "info"
+                );
+              },
+            })
+            .render("#paypal-button-container")
+            .then(function () {
+              log("✅ PayPal Buttons rendered successfully!", "success");
+              updateStatus("button-status", "Ready", true);
+              debugState.paypalInitialized = true;
+              showMessage("PayPal button ready for testing!", "success");
+            })
+            .catch(function (err) {
+              log(`❌ PayPal render failed: ${err.toString()}`, "error");
+              updateStatus("button-status", "Render Failed", false);
+
+              document.getElementById(
+                "paypal-button-container"
+              ).innerHTML = `<div class="error-message">❌ Failed to render PayPal button: ${err.toString()}</div>`;
+            });
+        } catch (error) {
+          log(
+            `❌ Exception during PayPal initialization: ${error.toString()}`,
+            "error"
+          );
+          updateStatus("button-status", "Exception", false);
+          showMessage(`Initialization failed: ${error.toString()}`, "error");
+        }
+      }
+
+      function reinitializePayPal() {
+        log("🔄 Reinitializing PayPal system...", "info");
+        debugState.paypalInitialized = false;
+
+        const reloadBtn = document.getElementById("reload-btn");
+        reloadBtn.disabled = true;
+        reloadBtn.textContent = "🔄 Reloading...";
+
+        updateStatus("button-status", "Reinitializing...", null);
+
+        document.getElementById("paypal-button-container").innerHTML =
+          '<div class="loading"><div class="spinner"></div>Reinitializing PayPal...</div>';
+
+        setTimeout(() => {
+          if (debugState.sdkLoaded && typeof paypal !== "undefined") {
+            initializePayPal();
+          } else {
+            log("❌ PayPal SDK not available for reinitialization", "error");
+            updateStatus("sdk-status", "Not Available", false);
+          }
+
+          reloadBtn.disabled = false;
+          reloadBtn.textContent = "🔄 Reload PayPal";
+        }, 1500);
+      }
+
+      function cycleAmount() {
+        const currentAmount = debugState.paymentDetails.amount;
+        const currentIndex = TEST_AMOUNTS.indexOf(currentAmount);
+        const nextIndex = (currentIndex + 1) % TEST_AMOUNTS.length;
+        const newAmount = TEST_AMOUNTS[nextIndex];
+
+        updatePaymentAmount(newAmount);
+      }
+
+      function updatePaymentAmount(newAmount) {
+        debugState.paymentDetails.amount = newAmount;
+        debugState.paymentDetails.orderID = `ORDER-${Date.now()}`;
+
+        document.getElementById("amount-display").textContent = `$${newAmount}`;
+        document.getElementById("order-id").textContent =
+          debugState.paymentDetails.orderID;
+
+        log(`💰 Payment amount updated to $${newAmount}`, "info");
+
+        // Reinitialize if PayPal is already loaded
+        if (debugState.paypalInitialized) {
+          showMessage(
+            `Amount changed to $${newAmount}. Reinitializing...`,
+            "info"
+          );
+          setTimeout(() => reinitializePayPal(), 500);
+        }
+      }
+
+      function simulatePayment() {
+        log("🧪 Starting payment simulation...", "info");
+
+        if (!debugState.paypalInitialized) {
+          showMessage(
+            "⚠️ PayPal button not ready yet! Please wait for initialization.",
+            "warning"
+          );
+          return;
+        }
+
+        showMessage(
+          "Click the PayPal button above to test the complete payment flow",
+          "info"
+        );
+        log("💡 Test Instructions:", "info");
+        log("  1. Click the PayPal button above", "info");
+        log("  2. Use sandbox credentials to log in", "info");
+        log("  3. Complete the payment flow", "info");
+        log("  4. Check the debug log for all events", "info");
+      }
+
+      // Simulate WebView message handling for React Native integration testing
+      function simulateWebViewMessage(messageData) {
+        log(
+          `📨 Simulating WebView message: ${JSON.stringify(messageData)}`,
+          "info"
+        );
+
+        if (messageData.amount) {
+          updatePaymentAmount(messageData.amount);
+        }
+
+        if (messageData.orderID) {
+          debugState.paymentDetails.orderID = messageData.orderID;
+          document.getElementById("order-id").textContent = messageData.orderID;
+          log(`📋 Order ID updated to: ${messageData.orderID}`, "info");
+        }
+
+        showMessage("WebView message processed successfully", "success");
+      }
+
+      // Initialize the debug tool
+      function initializeDebugTool() {
+        log("🚀 PayPal Debug Tool initializing...", "info");
+
+        // Set session info
+        document.getElementById("session-id").textContent =
+          debugState.sessionId;
+        updateLastUpdated();
+
+        // Validate environment
+        const isProduction =
+          window.location.protocol === "https:" &&
+          !window.location.hostname.includes("localhost") &&
+          !window.location.hostname.includes("127.0.0.1");
+
+        if (isProduction) {
+          document.getElementById("env-badge").textContent = "🔴 LIVE";
+          document.getElementById("env-badge").className =
+            "environment-badge live-badge";
+          log("⚠️ Running in production environment - be careful!", "warning");
+        }
+
+        // Test initial connection
+        testConnection();
+
+        // Start monitoring
+        startPerformanceMonitoring();
+
+        log("✅ Debug tool initialization complete", "success");
+      }
+
+      function startPerformanceMonitoring() {
+        // Monitor page performance
+        if ("performance" in window) {
+          const perfData = performance.timing;
+          const loadTime = perfData.loadEventEnd - perfData.navigationStart;
+
+          if (loadTime > 0) {
+            log(`📊 Page load time: ${loadTime}ms`, "info");
+          }
+        }
+
+        // Monitor memory usage if available
+        if ("memory" in performance) {
+          const memory = performance.memory;
+          log(
+            `💾 Memory usage: ${Math.round(
+              memory.usedJSHeapSize / 1048576
+            )}MB used`,
+            "info"
+          );
+        }
+
+        // Set up periodic health checks
+        setInterval(() => {
+          if (debugState.paypalInitialized) {
+            // Check if PayPal button is still responsive
+            const container = document.getElementById(
+              "paypal-button-container"
+            );
+            if (container && container.children.length === 0) {
+              log(
+                "⚠️ PayPal button container is empty - possible render issue",
+                "warning"
+              );
+              updateStatus("button-status", "Missing", "warning");
+            }
+          }
+        }, 30000); // Check every 30 seconds
+      }
+
+      // Enhanced error handling
+      window.addEventListener("error", function (event) {
+        log(
+          `💥 JavaScript Error: ${event.error?.message || event.message}`,
+          "error"
+        );
+        if (event.error?.stack) {
+          log(`Stack trace: ${event.error.stack}`, "error", false);
+        }
+      });
+
+      window.addEventListener("unhandledrejection", function (event) {
+        log(`💥 Unhandled Promise Rejection: ${event.reason}`, "error");
+        event.preventDefault();
+      });
+
+      // Expose debug API for external testing
+      window.paypalDebugAPI = {
+        // State access
+        getState: () => debugState,
+        getLogs: () => debugState.debugLog,
+
+        // Control functions
+        updateAmount: updatePaymentAmount,
+        simulateMessage: simulateWebViewMessage,
+        reinitialize: reinitializePayPal,
+        testConnection: testConnection,
+        exportData: exportDebugData,
+
+        // Utility functions
+        clearLogs: clearDebugLog,
+        toggleAutoScroll: toggleLogAutoScroll,
+
+        // Test helpers
+        testAmounts: TEST_AMOUNTS,
+        cycleAmount: cycleAmount,
+
+        // Manual message simulation for React Native testing
+        sendTestMessage: (type, data) => {
+          const testMessage = {
+            status: type,
+            timestamp: Date.now(),
+            ...data,
+          };
+          log(`🧪 Test message sent: ${JSON.stringify(testMessage)}`, "info");
+          return testMessage;
+        },
+      };
+
+      // Page lifecycle events
+      document.addEventListener("DOMContentLoaded", function () {
+        initializeDebugTool();
+
+        // Add keyboard shortcuts
+        document.addEventListener("keydown", function (event) {
+          if (event.ctrlKey || event.metaKey) {
+            switch (event.key) {
+              case "r":
+                event.preventDefault();
+                reinitializePayPal();
+                break;
+              case "l":
+                event.preventDefault();
+                clearDebugLog();
+                break;
+              case "e":
+                event.preventDefault();
+                exportDebugData();
+                break;
+            }
+          }
+        });
+
+        log(
+          "⌨️ Keyboard shortcuts enabled: Ctrl+R (reload), Ctrl+L (clear log), Ctrl+E (export)",
+          "info"
+        );
+      });
+
+      // Handle page visibility changes
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+          log("👁️ Page hidden - pausing monitoring", "info");
+        } else {
+          log("👁️ Page visible - resuming monitoring", "info");
+          updateLastUpdated();
+        }
+      });
+
+      // Network status monitoring
+      window.addEventListener("online", function () {
+        log("🌐 Network connection restored", "success");
+        showMessage("Connection restored", "success");
+        testConnection();
+      });
+
+      window.addEventListener("offline", function () {
+        log("🔌 Network connection lost", "warning");
+        showMessage("Connection lost - some features may not work", "warning");
+        updateStatus("connection-status", "Offline", false);
+      });
+
+      // Add helpful console messages
+      console.log("🔍 PayPal Debug Tool Loaded");
+      console.log("🛠️ Access debug API via: window.paypalDebugAPI");
+      console.log("📊 View current state: window.paypalDebugAPI.getState()");
+      console.log("📝 Export logs: window.paypalDebugAPI.exportData()");
+
+      // Auto-start if SDK is already loaded (fallback)
+      if (typeof paypal !== "undefined") {
+        setTimeout(() => {
+          if (!debugState.sdkLoaded) {
+            onPayPalSDKLoaded();
+          }
+        }, 1000);
+      }
+    </script>
+  </body>
+</html>

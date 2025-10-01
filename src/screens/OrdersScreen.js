@@ -1,8 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { BASE_URL } from "../../config";
+import axios from "axios";
 
 const OrdersScreen = () => {
+  const [orders1, setOrders1] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   const [orders] = useState([
     {
       id: "UC2024-0157",
@@ -46,6 +51,29 @@ const OrdersScreen = () => {
         return status;
     }
   };
+
+  const fetchOrders = async (page = 1, limit = 10) => {
+    try {
+      const response = await axios.get(
+        `${BASE_URL}/orders/getAll?page=${page}&limit=${limit}`
+      );
+
+      if (response.data.success) {
+        setOrders1(response.data.data.orders);
+      }
+    } catch (error) {
+      console.error("❌ Error fetching orders:", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+    console.log("======================");
+    console.log(orders1);
+    console.log("======================");
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>

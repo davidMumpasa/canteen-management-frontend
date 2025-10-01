@@ -15,6 +15,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import PayPalPayment from "./PayPalPayment";
+import { BASE_URL } from "../../config";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import JWT from "expo-jwt";
+import { TOKEN_KEY } from "../../config";
+import axios from "axios";
 
 const PaymentScreen = ({ navigation, route }) => {
   const [selectedPayment, setSelectedPayment] = useState("student");
@@ -24,37 +30,31 @@ const PaymentScreen = ({ navigation, route }) => {
   const [cardHolder, setCardHolder] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showPayPalModal, setShowPayPalModal] = useState(false);
+  const [cartItem, setCartItem] = useState("");
 
   const animatedValue = useRef(new Animated.Value(0)).current;
   const successAnim = useRef(new Animated.Value(0)).current;
 
-  // Mock order data - in real app this would come from route params
-  const orderData = route?.params?.orderData || {
-    items: [
-      { name: "Margherita Pizza", quantity: 2, price: 8.99 },
-      { name: "Classic Burger", quantity: 1, price: 6.99 },
-    ],
-    subtotal: 24.97,
+  const items =
+    route?.params?.items ||
+    (route?.params?.cartItem ? [route.params.cartItem] : []);
+
+  const orderData = {
+    items,
+    subtotal: items.reduce((sum, item) => sum + item.totalPrice, 0),
     tax: 2.25,
-    total: 27.22,
+    total: items.reduce((sum, item) => sum + item.totalPrice, 0) + 2.25,
     orderId: "#UC2024-0158",
   };
 
   const paymentMethods = [
     {
-      id: "student",
-      title: "Student Account",
-      subtitle: "Balance: $145.50",
-      icon: "school",
-      color: "#4CAF50",
-      available: true,
-    },
-    {
-      id: "mobile",
-      title: "Mobile Money",
-      subtitle: "**** 5678",
-      icon: "phone-portrait",
-      color: "#FF9800",
+      id: "paypal",
+      title: "PayPal",
+      subtitle: "Quick & Secure",
+      icon: "logo-paypal",
+      color: "#003087",
       available: true,
     },
     {
@@ -66,19 +66,19 @@ const PaymentScreen = ({ navigation, route }) => {
       available: true,
     },
     {
+      id: "student",
+      title: "Student Account",
+      subtitle: "Balance: R145.50",
+      icon: "school",
+      color: "#4CAF50",
+      available: false,
+    },
+    {
       id: "apple",
       title: "Apple Pay",
       subtitle: "Touch ID or Face ID",
       icon: "logo-apple",
       color: "#000",
-      available: false,
-    },
-    {
-      id: "google",
-      title: "Google Pay",
-      subtitle: "Quick & Secure",
-      icon: "logo-google",
-      color: "#4285F4",
       available: false,
     },
   ];
@@ -95,40 +95,166 @@ const PaymentScreen = ({ navigation, route }) => {
     return cleaned.slice(0, 2) + "/" + cleaned.slice(2, 4);
   };
 
-  const handlePayment = async () => {
-    if (
-      selectedPayment === "card" &&
-      (!cardNumber || !expiryDate || !cvv || !cardHolder)
-    ) {
-      Alert.alert("Error", "Please fill in all card details");
-      return;
+  const createOrder = async (orderData) => {
+    try {
+      const response = await axios.post(`${BASE_URL}/orders/add`, orderData);
+
+      if (response.data.success) {
+        console.log("✅ Order created:", response.data.order);
+        return response.data.order;
+      } else {
+        Alert.alert("Order Error", "Failed to create order");
+        return null;
+      }
+    } catch (err) {
+      console.error("❌ API Error:", err.response?.data || err.message);
+      Alert.alert("Order Error", "Something went wrong while creating order");
+      return null;
     }
+  };
 
-    setIsProcessing(true);
+  // Method: Add payment
+  const addPayment = async (paymentData) => {
+    try {
+      const userId = await getUserIdFromToken();
 
-    // Animate processing
-    Animated.timing(animatedValue, {
-      toValue: 1,
-      duration: 2000,
-      useNativeDriver: false,
-    }).start();
+      // Append userId to the payment data
+      const payload = { ...paymentData, userId };
 
-    // Simulate payment processing
-    setTimeout(() => {
-      setIsProcessing(false);
-      setShowSuccess(true);
+      const response = await axios.post(`${BASE_URL}/payment/add`, payload);
 
-      Animated.spring(successAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-      }).start();
+      console.log("✅ Payment added:", response.data);
+      return response.data;
+    } catch (err) {
+      console.error(
+        "❌ Error adding payment:",
+        err.response?.data || err.message
+      );
+      throw err;
+    }
+  };
 
-      // Auto close success modal and navigate
-      setTimeout(() => {
-        setShowSuccess(false);
-        navigation.navigate("Orders");
-      }, 3000);
-    }, 3000);
+  const getUserIdFromToken = async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      console.log("=====================");
+      console.log("Token: ", token);
+      console.log("=====================");
+      if (!token) {
+        console.error("❌ No token found");
+        return null;
+      }
+
+      const decoded = JWT.decode(token, TOKEN_KEY);
+      console.log("🔑 Decoded token:", decoded);
+
+      return decoded.id;
+    } catch (err) {
+      console.error("❌ Error decoding token:", err);
+      return null;
+    }
+  };
+
+  const handlePayment = async () => {
+    if (selectedPayment === "card") {
+      if (!cardNumber || !expiryDate || !cvv || !cardHolder) {
+        Alert.alert("Error", "Please fill in all card details");
+        return;
+      }
+
+      try {
+        setIsProcessing(true);
+
+        // Simulate payment animation
+        await new Promise((resolve) => {
+          Animated.timing(animatedValue, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: false,
+          }).start(() => resolve());
+        });
+        const userId = await getUserIdFromToken();
+        if (!userId) {
+          Alert.alert("Error", "User not authenticated");
+          return;
+        }
+        // 🔹 Prepare order payload
+        const orderPayload = {
+          userId,
+          totalAmount: orderData.total,
+          paymentMethod: "card",
+          orderType: "delivery",
+          deliveryAddress: "123 Main Street",
+          specialInstructions: "Leave at the door",
+          items: orderData.items.map((item) => ({
+            productId: item.id,
+            quantity: item.quantity,
+            specialRequests: item.specialRequests || "",
+          })),
+        };
+
+        // 🔹 Call API
+
+        const newOrder = await createOrder(orderPayload);
+
+        const orderItems = orderData.items.map((item) => ({
+          productId: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          size: item.selectedSize,
+          totalPrice: item.totalPrice,
+        }));
+
+        const totalAmount = orderItems.reduce(
+          (acc, item) => acc + item.totalPrice,
+          0
+        );
+
+        const paymentData = {
+          orderId: newOrder.id,
+          amount: totalAmount,
+          paymentMethod: "card",
+          type: "payment",
+          description: "Payment for cart order",
+          metadata: { cart: orderItems },
+        };
+        const result = await addPayment(paymentData);
+
+        if (newOrder) {
+          setIsProcessing(false);
+          setShowSuccess(true);
+
+          // Success animation
+          Animated.spring(successAnim, {
+            toValue: 1,
+            useNativeDriver: true,
+          }).start();
+
+          setTimeout(() => {
+            setShowSuccess(false);
+            // Pass the orderId to the OrderScreen
+            navigation.navigate("Main", {
+              screen: "Orders",
+              params: { orderId: newOrder.id },
+            });
+          }, 2000);
+        } else {
+          setIsProcessing(false);
+        }
+      } catch (err) {
+        setIsProcessing(false);
+        console.error("❌ Payment error:", err);
+        Alert.alert("Error", "Something went wrong during payment.");
+      }
+    } else if (selectedPayment === "paypal") {
+      setShowPayPalModal(true);
+    } else {
+      Alert.alert(
+        "Payment method not available",
+        "Please select a valid payment method."
+      );
+    }
   };
 
   const renderPaymentMethod = (method) => (
@@ -268,7 +394,7 @@ const PaymentScreen = ({ navigation, route }) => {
               Your order {orderData.orderId} has been confirmed
             </Text>
             <View style={styles.successDetails}>
-              <Text style={styles.successAmount}>${orderData.total}</Text>
+              <Text style={styles.successAmount}>R{orderData.total}</Text>
               <Text style={styles.successTime}>
                 Estimated pickup: 15-20 minutes
               </Text>
@@ -278,6 +404,39 @@ const PaymentScreen = ({ navigation, route }) => {
       </View>
     </Modal>
   );
+
+  const renderPayPalModal = () => {
+    if (!showPayPalModal) return null;
+
+    return (
+      <PayPalPayment
+        amount={orderData.total.toFixed(2)}
+        orderID={orderData.orderId}
+        clientId={"YOUR_PAYPAL_CLIENT_ID"}
+        currency="USD"
+        onSuccess={(data) => {
+          setShowPayPalModal(false);
+          Alert.alert(
+            "Payment Successful",
+            `Transaction ID: R{data.transactionId}`
+          );
+
+          navigation.navigate("Main", { screen: "Orders" });
+        }}
+        onCancel={() => {
+          setShowPayPalModal(false);
+          Alert.alert("Payment Cancelled", "You cancelled the PayPal payment.");
+        }}
+        onError={(error) => {
+          setShowPayPalModal(false);
+          Alert.alert(
+            "Payment Error",
+            error.message || "An error occurred during PayPal payment."
+          );
+        }}
+      />
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -293,7 +452,7 @@ const PaymentScreen = ({ navigation, route }) => {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>💳 Payment</Text>
         <View style={styles.headerAmount}>
-          <Text style={styles.headerAmountText}>${orderData.total}</Text>
+          <Text style={styles.headerAmountText}>R{orderData.total}</Text>
         </View>
       </LinearGradient>
 
@@ -307,22 +466,22 @@ const PaymentScreen = ({ navigation, route }) => {
                 {item.quantity}x {item.name}
               </Text>
               <Text style={styles.orderItemPrice}>
-                ${(item.price * item.quantity).toFixed(2)}
+                R{(item.price * item.quantity).toFixed(2)}
               </Text>
             </View>
           ))}
           <View style={styles.orderDivider} />
           <View style={styles.orderItem}>
             <Text style={styles.orderItemName}>Subtotal</Text>
-            <Text style={styles.orderItemPrice}>${orderData.subtotal}</Text>
+            <Text style={styles.orderItemPrice}>R{orderData.subtotal}</Text>
           </View>
           <View style={styles.orderItem}>
             <Text style={styles.orderItemName}>Tax</Text>
-            <Text style={styles.orderItemPrice}>${orderData.tax}</Text>
+            <Text style={styles.orderItemPrice}>R{orderData.tax}</Text>
           </View>
           <View style={styles.orderTotal}>
             <Text style={styles.orderTotalLabel}>Total</Text>
-            <Text style={styles.orderTotalAmount}>${orderData.total}</Text>
+            <Text style={styles.orderTotalAmount}>R{orderData.total}</Text>
           </View>
         </View>
 
@@ -334,6 +493,7 @@ const PaymentScreen = ({ navigation, route }) => {
 
         {/* Card Form */}
         {renderCardForm()}
+        {renderPayPalModal()}
 
         {/* Pickup Information */}
         <View style={styles.pickupInfo}>
@@ -389,7 +549,7 @@ const PaymentScreen = ({ navigation, route }) => {
               <>
                 <Ionicons name="card" size={24} color="white" />
                 <Text style={styles.payButtonText}>
-                  Complete Payment ${orderData.total}
+                  Complete Payment R{orderData.total}
                 </Text>
               </>
             )}
