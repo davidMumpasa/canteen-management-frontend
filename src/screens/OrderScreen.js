@@ -15,6 +15,7 @@ import axios from "axios";
 import { useSocket } from "../services/socketService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import AppService from "../services/AppService";
+import { ReviewModal } from "../components/ReviewComponents";
 
 const OrderScreen = ({ navigation }) => {
   const [currentStep, setCurrentStep] = useState(0);
@@ -24,6 +25,11 @@ const OrderScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState("connecting");
   const [userId, setUserId] = useState(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [completedOrderForReview, setCompletedOrderForReview] = useState(null);
+
+  const [selectedItemForReview, setSelectedItemForReview] = useState(null);
+  const [showItemReviewModal, setShowItemReviewModal] = useState(false);
 
   const { socket, isConnected, joinOrderRoom, leaveOrderRoom, on, off } =
     useSocket();
@@ -42,7 +48,6 @@ const OrderScreen = ({ navigation }) => {
     }
   };
 
-  // Handle real-time order updates
   const handleOrderUpdate = useCallback(
     (data) => {
       console.log("🔄 Received order update:", data);
@@ -50,25 +55,22 @@ const OrderScreen = ({ navigation }) => {
       if (data.order && order && data.order.id === order.id) {
         const updatedOrder = data.order;
 
-        // Don't show completed orders
-        if (
-          updatedOrder.status === "completed" ||
-          updatedOrder.status === "cancelled"
-        ) {
-          Alert.alert(
-            updatedOrder.status === "completed"
-              ? "Order Completed"
-              : "Order Cancelled",
-            updatedOrder.status === "completed"
-              ? "Your order has been completed successfully!"
-              : "Your order has been cancelled.",
-            [
-              {
-                text: "OK",
-                onPress: () => navigation.navigate("Main", { screen: "Home" }),
-              },
-            ]
-          );
+        // Handle completed orders - show review modal
+        if (updatedOrder.status === "completed") {
+          setCompletedOrderForReview(updatedOrder);
+          setShowReviewModal(true);
+
+          return;
+        }
+
+        // Handle cancelled orders
+        if (updatedOrder.status === "cancelled") {
+          Alert.alert("Order Cancelled", "Your order has been cancelled.", [
+            {
+              text: "OK",
+              onPress: () => navigation.navigate("Main", { screen: "Home" }),
+            },
+          ]);
           return;
         }
 
@@ -711,6 +713,111 @@ const OrderScreen = ({ navigation }) => {
 
         <View className="h-24" />
       </ScrollView>
+
+      {/* Review Completion Modal */}
+      {showReviewModal && completedOrderForReview && (
+        <View className="absolute inset-0 bg-black/50 justify-center items-center px-5 z-50">
+          <View className="bg-white rounded-3xl p-6 w-full max-w-md">
+            <View className="items-center mb-4">
+              <View className="w-20 h-20 bg-green-100 rounded-full items-center justify-center mb-4">
+                <Ionicons name="checkmark-circle" size={48} color="#10B981" />
+              </View>
+              <Text className="text-2xl font-bold text-gray-900 mb-2">
+                Order Completed! 🎉
+              </Text>
+              <Text className="text-gray-600 text-center mb-4">
+                Your order has been completed successfully. How was your
+                experience?
+              </Text>
+            </View>
+
+            {/* Order Items for Review */}
+            <View className="mb-6">
+              <Text className="text-lg font-bold text-gray-900 mb-3">
+                Rate Your Items:
+              </Text>
+              <ScrollView className="max-h-60">
+                {completedOrderForReview.orderItems?.map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    onPress={() => {
+                      console.log("Item clicked:", item);
+                      setSelectedItemForReview({
+                        ...item.product,
+                        orderId: completedOrderForReview.id,
+                        productId: item.productId,
+                      });
+                      setShowItemReviewModal(true);
+                    }}
+                    className="flex-row items-center bg-gray-50 rounded-2xl p-3 mb-2"
+                  >
+                    <Text className="text-3xl mr-3">{item.product.image}</Text>
+                    <View className="flex-1">
+                      <Text className="font-semibold text-gray-900">
+                        {item.product.name}
+                      </Text>
+                      <Text className="text-gray-500 text-sm">
+                        Tap to review
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color="#667eea"
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Action Buttons */}
+            <View className="space-y-3">
+              <TouchableOpacity
+                onPress={() => {
+                  setShowReviewModal(false);
+                  navigation.navigate("Main", { screen: "Home" });
+                }}
+                className="bg-indigo-600 py-4 rounded-2xl items-center"
+              >
+                <Text className="text-white font-bold text-lg">
+                  Continue Shopping
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setShowReviewModal(false);
+                  navigation.navigate("Main", { screen: "Orders" });
+                }}
+                className="bg-white border-2 border-indigo-600 py-4 rounded-2xl items-center"
+              >
+                <Text className="text-indigo-600 font-bold text-lg">
+                  View Orders
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Review Modal Component */}
+      {selectedItemForReview && (
+        <ReviewModal
+          visible={showItemReviewModal}
+          onClose={() => {
+            setShowItemReviewModal(false);
+            setSelectedItemForReview(null);
+          }}
+          userId={userId}
+          menuItemId={selectedItemForReview.id}
+          orderId={selectedItemForReview.orderId}
+          productId={selectedItemForReview.productId}
+          onReviewSubmitted={() => {
+            setShowItemReviewModal(false);
+            setSelectedItemForReview(null);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 };

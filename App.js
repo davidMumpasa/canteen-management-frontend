@@ -23,6 +23,7 @@ import CustomBottomNav from "./src/screens/CustomBottomNav";
 import ItemDetailScreen from "./src/screens/ItemDetailScreen";
 import { CartProvider } from "./src/hooks/useCart";
 import PayPalPayment from "./src/screens/PayPalPayment";
+import NotificationScreen from "./src/screens/NotificationScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -66,7 +67,7 @@ export default function App() {
             {/* Main app with bottom nav */}
             <Stack.Screen name="Main" component={MainTabs} />
             <Stack.Screen name="ItemDetails" component={ItemDetailScreen} />
-
+            <Stack.Screen name="Notifications" component={NotificationScreen} />
             <Stack.Screen name="Payment" component={PaymentScreen} />
             <Stack.Screen name="adminDashboard" component={AdminDashboard} />
             <Stack.Screen name="Chatbot" component={ChatBotScreen} />

@@ -8,16 +8,18 @@ import {
   StatusBar,
   Animated,
   Image,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
 import { useCart } from "../hooks/useCart";
+import { EnhancedReviewsTab } from "../components/ReviewComponents";
+import { BASE_URL } from "../../config";
 
 const { width, height } = Dimensions.get("window");
 
-const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
+const ItemDetailScreen = ({ route, navigation }) => {
   const { item } = route.params;
-
   const { addItem } = useCart();
 
   const [quantity, setQuantity] = useState(1);
@@ -26,31 +28,40 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
   const [activeTab, setActiveTab] = useState("details");
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
+  const [reviews, setReviews] = useState([]);
+  const [itemData, setItemData] = useState(item);
 
+  // Get userId from your auth context/storage - Replace with actual implementation
+  const userId = 1; // TODO: Get from auth context
+  const orderId = null; // TODO: Set this if user has purchased the item
   // Parse ingredients and allergens from strings
-  const ingredientsList = item.ingredients
-    ? item.ingredients.split(",").map((ing) => ing.trim())
+  const ingredientsList = itemData.ingredients
+    ? itemData.ingredients.split(",").map((ing) => ing.trim())
     : [];
 
-  const allergensList = item.allergens
-    ? item.allergens.split(",").map((all) => all.trim())
+  const allergensList = itemData.allergens
+    ? itemData.allergens.split(",").map((all) => all.trim())
     : [];
+
+  console.log("==================================");
+  console.log("itemData -----------> : ", itemData.id);
+  console.log("==================================");
 
   const sizes = [
     {
       name: "Small",
-      price: item.price * 0.8,
+      price: itemData.price * 0.8,
       discount: "Save 20%",
       popular: false,
     },
     {
       name: "Regular",
-      price: parseFloat(item.price),
+      price: parseFloat(itemData.price),
       popular: true,
     },
     {
       name: "Large",
-      price: item.price * 1.4,
+      price: itemData.price * 1.4,
       extra: "Family Size",
       popular: false,
     },
@@ -83,25 +94,6 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
     },
   ];
 
-  const mockReviews = [
-    {
-      id: 1,
-      user: "Sarah M.",
-      rating: 5,
-      comment: "Absolutely delicious! Fresh ingredients and amazing flavors.",
-      date: "2 days ago",
-      avatar: "👩‍💼",
-    },
-    {
-      id: 2,
-      user: "James K.",
-      rating: 4,
-      comment: "Great quality and presentation. Worth the price!",
-      date: "1 week ago",
-      avatar: "👨‍💻",
-    },
-  ];
-
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -115,7 +107,42 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
         useNativeDriver: true,
       }),
     ]).start();
+
+    // Fetch reviews when component mounts
+    fetchReviews();
   }, []);
+
+  const fetchReviews = async () => {
+    try {
+      const response = await fetch(
+        `${BASE_URL}/reviews/product/${itemData.id}`
+      );
+      const data = await response.json();
+      if (data.success) {
+        // Add productId to each review object to prevent ReferenceError
+        const reviewsWithProductId = data.data.map((review) => ({
+          ...review,
+          productId: itemData.id,
+        }));
+        setReviews(reviewsWithProductId);
+        console.log("==================================");
+        console.log("data.data  -----------> : ", data.data);
+        console.log("==================================");
+        // Update item with latest rating and review count
+        if (data.data.length > 0) {
+          const avgRating =
+            data.data.reduce((sum, r) => sum + r.rating, 0) / data.data.length;
+          setItemData({
+            ...itemData,
+            rating: avgRating.toFixed(1),
+            reviewCount: data.data.length,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching reviews:", error);
+    }
+  };
 
   const updateQuantity = (delta) => {
     setQuantity(Math.max(1, quantity + delta));
@@ -123,38 +150,71 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
 
   const getCurrentPrice = () => {
     const sizePrice =
-      sizes.find((size) => size.name === selectedSize)?.price || item.price;
+      sizes.find((size) => size.name === selectedSize)?.price || itemData.price;
     return sizePrice * quantity;
   };
 
   const formatPrepTime = (minutes) => {
-    const baseTime = parseInt(minutes);
+    const baseTime = parseInt(minutes) || 15;
     const maxTime = baseTime + 5;
     return `${baseTime}-${maxTime} min`;
   };
 
   const handleAddToCart = () => {
+    if (!itemData.isAvailable) {
+      Alert.alert("Unavailable", "This item is currently unavailable.");
+      return;
+    }
+
     const cartItem = {
-      id: item.id,
-      name: item.name,
+      id: itemData.id,
+      name: itemData.name,
       price: getCurrentPrice() / quantity,
       quantity,
       selectedSize,
       totalPrice: getCurrentPrice(),
-      image: item.image,
+      image: itemData.image,
     };
 
-    // Add item to cart using context
     addItem(cartItem);
 
-    // Navigate to the Cart screen within the MainTabs
-    navigation.navigate("Main", {
-      screen: "Cart",
-    });
+    Alert.alert(
+      "Added to Cart! 🛒",
+      `${quantity}x ${itemData.name} (${selectedSize}) added to your cart.`,
+      [
+        {
+          text: "Continue Shopping",
+          style: "cancel",
+        },
+        {
+          text: "View Cart",
+          onPress: () => navigation.navigate("Main", { screen: "Cart" }),
+        },
+      ]
+    );
   };
 
   const handleBack = () => {
     navigation.goBack();
+  };
+
+  const handleReviewsUpdate = (updatedReviews) => {
+    // Ensure updatedReviews also have productId
+    const reviewsWithProductId = updatedReviews.map((review) => ({
+      ...review,
+      productId: itemData.id,
+    }));
+    setReviews(reviewsWithProductId);
+    if (updatedReviews.length > 0) {
+      const avgRating =
+        updatedReviews.reduce((sum, r) => sum + r.rating, 0) /
+        updatedReviews.length;
+      setItemData({
+        ...itemData,
+        rating: avgRating.toFixed(1),
+        reviewCount: updatedReviews.length,
+      });
+    }
   };
 
   const DetailCard = ({ icon, label, value, colors }) => (
@@ -232,39 +292,6 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
     </Animated.View>
   );
 
-  const ReviewItem = ({ review }) => (
-    <View className="bg-white rounded-2xl p-4 mb-4 shadow-sm border border-slate-100">
-      <View className="flex-row items-start justify-between mb-3">
-        <View className="flex-row items-center flex-1">
-          <View className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full items-center justify-center mr-3">
-            <Text className="text-2xl">{review.avatar}</Text>
-          </View>
-          <View className="flex-1">
-            <Text className="text-slate-900 text-lg font-semibold">
-              {review.user}
-            </Text>
-            <View className="flex-row items-center mt-1">
-              <View className="flex-row mr-2">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Icon
-                    key={star}
-                    name={star <= review.rating ? "star" : "star-outline"}
-                    size={16}
-                    color="#F59E0B"
-                  />
-                ))}
-              </View>
-              <Text className="text-slate-500 text-sm">{review.date}</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-      <Text className="text-slate-700 text-base leading-6">
-        {review.comment}
-      </Text>
-    </View>
-  );
-
   const renderTabContent = () => {
     switch (activeTab) {
       case "details":
@@ -281,8 +308,8 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
                 ✨ Product Details
               </Text>
               <Text className="text-slate-600 text-base leading-7">
-                {item.description ||
-                  "A carefully crafted dish made with the finest ingredients and attention to detail."}
+                {itemData.description ||
+                  "A carefully crafted dish made with the finest ingredients and attention to detail. Experience authentic flavors that will tantalize your taste buds."}
               </Text>
             </View>
 
@@ -290,7 +317,7 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
               <DetailCard
                 icon="time"
                 label="Prep Time"
-                value={formatPrepTime(item.preparationTime)}
+                value={formatPrepTime(itemData.preparationTime)}
                 colors={["#3B82F6", "#06B6D4"]}
               />
               <DetailCard
@@ -302,13 +329,13 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
               <DetailCard
                 icon="trophy"
                 label="Rating"
-                value={`${item.rating || "4.5"} ⭐`}
+                value={`${itemData.rating || "4.5"} ⭐`}
                 colors={["#10B981", "#14B8A6"]}
               />
               <DetailCard
                 icon="people"
                 label="Reviews"
-                value={`${item.reviewCount || "0"}+`}
+                value={`${itemData.reviewCount || "0"}+`}
                 colors={["#F59E0B", "#F97316"]}
               />
             </View>
@@ -319,7 +346,7 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
                 Dietary Information
               </Text>
               <View className="flex-row flex-wrap">
-                {item.isVeg && (
+                {itemData.isVeg && (
                   <LinearGradient
                     colors={["#10B981", "#14B8A6"]}
                     className="px-4 py-2 rounded-full mr-2 mb-2"
@@ -329,7 +356,7 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
                     </Text>
                   </LinearGradient>
                 )}
-                {item.isVegan && (
+                {itemData.isVegan && (
                   <LinearGradient
                     colors={["#059669", "#047857"]}
                     className="px-4 py-2 rounded-full mr-2 mb-2"
@@ -339,7 +366,7 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
                     </Text>
                   </LinearGradient>
                 )}
-                {item.isGlutenFree && (
+                {itemData.isGlutenFree && (
                   <LinearGradient
                     colors={["#F59E0B", "#F97316"]}
                     className="px-4 py-2 rounded-full mr-2 mb-2"
@@ -430,26 +457,26 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
             <View className="flex-row flex-wrap -mx-2">
               <NutritionCard
                 label="Calories"
-                value={item.calories || "N/A"}
-                unit={item.calories ? "kcal" : ""}
+                value={itemData.calories || "N/A"}
+                unit={itemData.calories ? "kcal" : ""}
                 colors={["#EF4444", "#EC4899"]}
                 progress="75%"
               />
               <NutritionCard
                 label="Protein"
-                value={item.nutritionInfo?.protein || "N/A"}
+                value={itemData.nutritionInfo?.protein || "N/A"}
                 colors={["#3B82F6", "#8B5CF6"]}
                 progress="88%"
               />
               <NutritionCard
                 label="Carbs"
-                value={item.nutritionInfo?.carbs || "N/A"}
+                value={itemData.nutritionInfo?.carbs || "N/A"}
                 colors={["#10B981", "#14B8A6"]}
                 progress="60%"
               />
               <NutritionCard
                 label="Fat"
-                value={item.nutritionInfo?.fat || "N/A"}
+                value={itemData.nutritionInfo?.fat || "N/A"}
                 colors={["#F59E0B", "#F97316"]}
                 progress="45%"
               />
@@ -475,67 +502,14 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
 
       case "reviews":
         return (
-          <View className="px-6 py-4">
-            <View className="mb-6">
-              <Text className="text-slate-900 text-2xl font-bold mb-3">
-                ⭐ Customer Reviews
-              </Text>
-
-              <LinearGradient
-                colors={["#F59E0B", "#F97316"]}
-                className="rounded-2xl p-6 mb-6"
-              >
-                <View className="items-center">
-                  <Text className="text-white text-5xl font-bold mb-2">
-                    {item.rating || "4.5"}
-                  </Text>
-                  <View className="flex-row mr-2">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <Icon
-                        key={star}
-                        name={
-                          star <= Math.floor(item.rating || 4.5)
-                            ? "star"
-                            : "star-outline"
-                        }
-                        size={24}
-                        color="#FCD34D"
-                      />
-                    ))}
-                  </View>
-                  <Text className="text-white text-lg font-medium opacity-90">
-                    Based on {item.reviewCount || 0} reviews
-                  </Text>
-                </View>
-              </LinearGradient>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {mockReviews.map((review) => (
-                <ReviewItem key={review.id} review={review} />
-              ))}
-
-              <View className="bg-slate-100 rounded-2xl p-6 items-center mt-4">
-                <Icon name="chatbubble" size={48} color="#64748B" />
-                <Text className="text-slate-700 text-lg font-semibold mt-3 mb-2">
-                  Share Your Experience
-                </Text>
-                <Text className="text-slate-500 text-center text-base">
-                  Help others discover this amazing dish by leaving your review
-                </Text>
-                <TouchableOpacity className="mt-4">
-                  <LinearGradient
-                    colors={["#8B5CF6", "#A855F7"]}
-                    className="px-6 py-3 rounded-xl"
-                  >
-                    <Text className="text-white font-semibold">
-                      Write a Review
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
+          <EnhancedReviewsTab
+            item={itemData}
+            reviews={reviews}
+            userId={userId}
+            orderId={orderId}
+            productId={itemData.id}
+            onReviewsUpdate={handleReviewsUpdate}
+          />
         );
 
       default:
@@ -571,7 +545,7 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
             className="text-white text-lg font-bold flex-1 text-center mx-4"
             numberOfLines={1}
           >
-            {item.name}
+            {itemData.name}
           </Text>
 
           <TouchableOpacity className="w-12 h-12 bg-white/20 rounded-full items-center justify-center">
@@ -583,19 +557,14 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
         <View className="flex-1 items-center justify-center z-10">
           <View className="relative items-center justify-center">
             <View className="absolute w-[180px] h-auto bg-white/20 rounded-full blur-3xl" />
-            {item.image ? (
-              <Text className="text-[140px]">{item.image}</Text>
+            {itemData.image ? (
+              <Text className="text-[140px]">{itemData.image}</Text>
             ) : (
-              // <Image
-              //   source={{ uri: item.image }}
-              //   style={{ width: 160, height: 160, borderRadius: 80 }}
-              //   className="z-10"
-              // />
               <View className="w-40 h-40 bg-white/30 rounded-full items-center justify-center z-10">
                 <Icon name="restaurant" size={80} color="#fff" />
               </View>
             )}
-            {item.isAvailable === false && (
+            {itemData.isAvailable === false && (
               <LinearGradient
                 colors={["#EF4444", "#DC2626"]}
                 className="absolute -top-4 -right-4 px-4 py-2 rounded-full z-20"
@@ -634,9 +603,9 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
           <View className="px-6 pt-8 pb-8">
             <View className="mb-4">
               <Text className="text-slate-900 text-3xl font-bold mb-2">
-                {item.name}
+                {itemData.name}
               </Text>
-              {item.categoryId && (
+              {itemData.categoryId && (
                 <LinearGradient
                   colors={["#8B5CF6", "#A855F7"]}
                   className="self-start px-4 py-2 rounded-full"
@@ -656,11 +625,11 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
                 >
                   <Icon name="star" size={16} color="#fff" />
                   <Text className="text-white text-sm font-bold ml-1">
-                    {item.rating || "4.5"}
+                    {itemData.rating || "4.5"}
                   </Text>
                 </LinearGradient>
                 <Text className="text-slate-500 text-sm">
-                  ({item.reviewCount || 0} reviews)
+                  ({itemData.reviewCount || 0} reviews)
                 </Text>
               </View>
 
@@ -670,13 +639,13 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
               >
                 <Icon name="time" size={16} color="#fff" />
                 <Text className="text-white text-sm font-semibold ml-1">
-                  {formatPrepTime(item.preparationTime)}
+                  {formatPrepTime(itemData.preparationTime)}
                 </Text>
               </LinearGradient>
             </View>
 
             <Text className="text-slate-600 text-base leading-6">
-              {item.description ||
+              {itemData.description ||
                 "Experience the perfect blend of flavors and quality craftsmanship in every bite."}
             </Text>
           </View>
@@ -853,11 +822,11 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
             <TouchableOpacity
               onPress={handleAddToCart}
               className="rounded-2xl overflow-hidden"
-              disabled={!item.isAvailable}
+              disabled={!itemData.isAvailable}
             >
               <LinearGradient
                 colors={
-                  item.isAvailable
+                  itemData.isAvailable
                     ? ["#8B5CF6", "#A855F7"]
                     : ["#9CA3AF", "#6B7280"]
                 }
@@ -865,7 +834,7 @@ const ItemDetailScreen = ({ route, navigation, onAddToCart }) => {
               >
                 <Icon name="bag-add" size={24} color="#fff" />
                 <Text className="text-white text-base font-bold ml-2">
-                  {item.isAvailable ? "Add to Cart" : "Unavailable"}
+                  {itemData.isAvailable ? "Add to Cart" : "Unavailable"}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>

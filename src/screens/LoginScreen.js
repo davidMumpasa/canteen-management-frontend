@@ -103,6 +103,9 @@ const LoginScreen = ({ navigation }) => {
       }
 
       await AsyncStorage.setItem("token", data.token);
+      console.log("================");
+      console.log("Login:  ", data.token);
+      console.log("================");
       Alert.alert("Success", "Login Successful");
       bottomSheetRef.current?.snapToIndex(0);
 

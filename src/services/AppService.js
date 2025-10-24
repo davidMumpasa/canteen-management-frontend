@@ -3,6 +3,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import JWT from "expo-jwt";
 import { TOKEN_KEY } from "../../config";
+import base64 from "base-64";
 
 // Backend API base URL
 import { BASE_URL } from "../../config";
@@ -12,17 +13,15 @@ class AppService {
   static async getUserIdFromToken() {
     try {
       const token = await AsyncStorage.getItem("token");
+      if (!token) return null;
 
-      if (!token) {
-        console.error("❌ No token found");
-        return null;
-      }
+      const payloadBase64 = token.split(".")[1];
+      const payload = JSON.parse(base64.decode(payloadBase64));
 
-      const decoded = JWT.decode(token, TOKEN_KEY);
-
-      return decoded;
+      console.log("Decoded payload:", payload);
+      return payload;
     } catch (err) {
-      console.error("❌ Error decoding token:", err);
+      console.error("❌ Manual decode failed:", err);
       return null;
     }
   }

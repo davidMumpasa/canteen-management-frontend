@@ -63,7 +63,7 @@ class SocketService {
 
     // Connection events
     this.socket.on("connect", () => {
-      console.log("✅ Socket connected:", this.socket.id);
+      //console.log("✅ Socket connected:", this.socket.id);
       this.isConnected = true;
       this.reconnectAttempts = 0;
 
@@ -84,20 +84,20 @@ class SocketService {
     });
 
     this.socket.on("disconnect", (reason) => {
-      console.log("❌ Socket disconnected:", reason);
+      //console.log("❌ Socket disconnected:", reason);
       this.isConnected = false;
       this.joinedRooms.clear();
       this.emit("socketDisconnected", { reason });
     });
 
     this.socket.on("connect_error", (error) => {
-      console.error("Socket connection error:", error);
+      //console.error("Socket connection error:", error);
       this.isConnected = false;
       this.emit("socketError", { error });
     });
 
     this.socket.on("reconnect", (attemptNumber) => {
-      console.log("🔄 Socket reconnected after", attemptNumber, "attempts");
+      //console.log("🔄 Socket reconnected after", attemptNumber, "attempts");
       this.isConnected = true;
       this.emit("socketReconnected", { attemptNumber });
     });
@@ -118,7 +118,7 @@ class SocketService {
     });
 
     this.socket.on("orderStatusChanged", (data) => {
-      console.log("🔄 Order status changed received:", data);
+      //console.log("🔄 Order status changed received:", data);
       this.emit("orderStatusChanged", data);
     });
 
@@ -131,31 +131,26 @@ class SocketService {
     // PRODUCT EVENTS
     // ===========================================
     this.socket.on("productCreated", (data) => {
-      console.log("🍕 Product created received:", data);
       this.emit("productCreated", data);
       this.emit("productUpdated", { action: "created", data });
     });
 
     this.socket.on("productUpdated", (data) => {
-      console.log("🔄 Product updated received:", data);
       this.emit("productUpdated", { action: "updated", data });
     });
 
     this.socket.on("productDeleted", (data) => {
-      console.log("🗑️ Product deleted received:", data);
       this.emit("productDeleted", data);
       this.emit("productUpdated", { action: "deleted", data });
     });
 
     this.socket.on("productAvailabilityToggled", (data) => {
-      console.log("🔄 Product availability toggled:", data);
       this.emit("productAvailabilityToggled", data);
       this.emit("productUpdated", { action: "availability_toggled", data });
     });
 
     // Generic product update handler for backward compatibility
     this.socket.on("productUpdate", (data) => {
-      console.log("🔄 Generic product update received:", data);
       this.emit("productUpdated", data);
     });
 
@@ -260,9 +255,9 @@ class SocketService {
     // ===========================================
     // NOTIFICATION EVENTS
     // ===========================================
-    this.socket.on("notification", (data) => {
-      console.log("🔔 Notification received:", data);
-      this.emit("notification", data);
+    this.socket.on("notificationCreated", (data) => {
+      console.log("🔔 notificationCreated received:", data);
+      this.emit("notificationCreated", data);
     });
 
     this.socket.on("systemAnnouncement", (data) => {
@@ -406,7 +401,7 @@ class SocketService {
       this.listeners.set(eventName, []);
     }
     this.listeners.get(eventName).push(callback);
-    console.log(`📡 Added listener for: ${eventName}`);
+    //console.log(`📡 Added listener for: ${eventName}`);
   };
 
   // Remove specific event listener
@@ -416,7 +411,7 @@ class SocketService {
       const index = callbacks.indexOf(callback);
       if (index > -1) {
         callbacks.splice(index, 1);
-        console.log(`📡 Removed listener for: ${eventName}`);
+        //console.log(`📡 Removed listener for: ${eventName}`);
       }
     }
   };

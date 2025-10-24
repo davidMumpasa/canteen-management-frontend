@@ -164,18 +164,8 @@ class PayPalPayment extends Component {
     this.addDebugInfo("WebView loaded successfully");
     this.setState({ webViewLoaded: true });
 
-    // Send payment data immediately and retry a few times
-    setTimeout(() => {
-      this.sendPaymentDataToWebView();
-    }, 500);
-
-    setTimeout(() => {
-      this.sendPaymentDataToWebView();
-    }, 2000);
-
-    setTimeout(() => {
-      this.sendPaymentDataToWebView();
-    }, 4000);
+    // Remove the multiple sends - wait for webview_ready signal instead
+    // The WebView will tell us when it's ready
 
     setTimeout(() => {
       this.setState({ loading: false });
@@ -201,6 +191,14 @@ class PayPalPayment extends Component {
       );
 
       switch (data.type || data.status) {
+        case "webview_ready":
+          this.addDebugInfo("WebView is ready, sending payment data now");
+          // Send payment data immediately when WebView signals ready
+          setTimeout(() => {
+            this.sendPaymentDataToWebView();
+          }, 200);
+          break;
+
         case "debug":
           this.addDebugInfo(data.message);
           break;
@@ -849,10 +847,15 @@ class PayPalPayment extends Component {
                     }
                     sendMessage({ type: 'debug', message: 'PayPal button rendered successfully' });
                     
+                    // Add this near the end of the WebView HTML's script section, before the closing </script> tag:
+
+                    // Signal that WebView is ready immediately
                     setTimeout(() => {
-                        const buttons = container.querySelectorAll('div');
-                        sendMessage({ type: 'debug', message: \`Button container has \${buttons.length} child elements\` });
-                    }, 1000);
+                        sendMessage({ 
+                            type: 'webview_ready', 
+                            message: 'WebView fully initialized and listeners attached' 
+                        });
+                    }, 100);
                     
                 }).catch((err) => {
                     console.error('Render error:', err);
@@ -867,11 +870,34 @@ class PayPalPayment extends Component {
         }
         
         function isValidPaymentData(data) {
-            // Filter out postrobot messages
-            if (data.__post_robot_11_0_0__ || data.type === 'postrobot_message_request') {
+            // Filter out postrobot and other framework messages
+            if (!data || typeof data !== 'object') {
                 return false;
             }
-            return data && data.clientId && data.amount && data.orderID && data.userId;
+            
+            if (data.__post_robot_11_0_0__ || 
+                data.type === 'postrobot_message_request' ||
+                data.type === 'webview_ready' ||
+                data.type === 'debug') {
+                return false;
+            }
+            
+            // Must have all required fields
+            const hasRequiredFields = data.clientId && 
+                                      data.amount && 
+                                      data.orderID && 
+                                      data.userId &&
+                                      data.apiBaseUrl &&
+                                      data.userToken;
+            
+            if (hasRequiredFields) {
+                sendMessage({ 
+                    type: 'debug', 
+                    message: 'Valid payment data structure detected' 
+                });
+            }
+            
+            return hasRequiredFields;
         }
         
         function handlePaymentData(data) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   Dimensions,
   Alert,
 } from "react-native";
+
+import { Bell, BellRing } from "lucide-react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BASE_URL } from "../../config";
 import { useNavigation } from "@react-navigation/native";
@@ -37,10 +39,16 @@ const HomeScreen = () => {
   const [favorites, setFavorites] = useState(new Set([2, 4]));
   const [user, setUser] = useState("");
   const [lastUpdateTime, setLastUpdateTime] = useState(Date.now());
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState([]);
 
   // Enhanced socket integration with real-time updates
   const { socket, isConnected, connectionStatus, on, off } = useSocket();
   const { updates } = useRealTimeUpdates(["product", "category", "user"]);
+  // Add these refs for debouncing duplicate updates (add at the top with other state)
+  const lastProcessedRef = useRef({});
+  const lastProcessedCategoryRef = useRef({});
+  const lastProcessedNotificationRef = useRef({});
 
   // Category configuration with icons and colors
   const categoryIcons = {
@@ -82,6 +90,217 @@ const HomeScreen = () => {
     { title: "Wallet", icon: "card", color: "#ffa726", count: "R45" },
   ];
 
+  const fetchNotifications = async (
+    page = 1,
+    unreadOnly = false,
+    type = null
+  ) => {
+    try {
+      setLoading(true);
+      const sessionUser = await AppService.getUserIdFromToken();
+      if (!sessionUser?.id) {
+        Alert.alert("Error", "User not found");
+        return;
+      }
+
+      // Build URL
+      let url = `/notifications/user/${sessionUser.id}?page=${page}&limit=20`;
+      if (unreadOnly) url += "&unreadOnly=true";
+      if (type) url += `&type=${type}`;
+
+      const data = await AppService.get(url);
+      // iu
+
+      if (data.success) {
+        setNotifications(data.data.notifications || []);
+
+        // Count unread notifications
+        const unreadCount = data.data.notifications.filter(
+          (n) => !n.read
+        ).length;
+        setUnreadCount(unreadCount);
+
+        return data.data || { notifications: [], pagination: {} };
+      } else {
+        return { notifications: [], pagination: {} };
+      }
+    } catch (error) {
+      console.error("❌ Error fetching notifications:", error);
+      Alert.alert("Error", "Failed to load notifications");
+      return { notifications: [], pagination: {} };
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Handle real-time notification updates
+  const handleNotificationUpdate = useCallback(
+    async (data) => {
+      console.log("============================================");
+      console.log(
+        "🔔 Raw Notification Update Data:",
+        JSON.stringify(data, null, 2)
+      );
+      console.log("============================================");
+
+      if (!data) {
+        console.log("⚠️ No data received");
+        return;
+      }
+
+      // Extract the actual notification data - handle nested structure
+      let action, notificationData;
+
+      // Check if data is nested (data.data pattern)
+      if (data.data && data.data.data) {
+        action = data.data.action || data.action;
+        notificationData = data.data.data;
+        console.log("🔔 Using nested data structure");
+      } else if (data.data) {
+        action = data.action;
+        notificationData = data.data;
+        console.log("🔔 Using single-level data structure");
+      } else {
+        console.log("⚠️ Invalid data structure");
+        return;
+      }
+
+      // Debounce: Ignore if same update within 500ms
+      const updateKey = `${notificationData.id || "all"}-${action}`;
+      const now = Date.now();
+
+      if (
+        lastProcessedNotificationRef.current[updateKey] &&
+        now - lastProcessedNotificationRef.current[updateKey] < 500
+      ) {
+        console.log("⏭️ Skipping duplicate notification update");
+        return;
+      }
+
+      lastProcessedNotificationRef.current[updateKey] = now;
+
+      console.log("============================================");
+      console.log("🔔 Action:", action);
+      console.log("🔔 Notification ID:", notificationData.id);
+      console.log("============================================");
+
+      // Pulse animation for visual feedback
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      try {
+        switch (action) {
+          case "created":
+            // Check if notification already exists
+            setNotifications((prev) => {
+              const exists = prev.some((n) => n.id === notificationData.id);
+              if (exists) {
+                console.log("⚠️ Notification already exists, skipping");
+                return prev;
+              }
+
+              console.log("✅ Adding new notification");
+              const newNotifications = [notificationData, ...prev];
+
+              // Recalculate unread count from the actual list
+              const newUnreadCount = newNotifications.filter(
+                (n) => !n.read && !n.isRead
+              ).length;
+              setUnreadCount(newUnreadCount);
+              console.log("📊 New unread count:", newUnreadCount);
+
+              return newNotifications;
+            });
+            break;
+
+          case "read":
+            setNotifications((prev) => {
+              const notification = prev.find(
+                (n) => n.id === notificationData.id
+              );
+
+              if (!notification) {
+                console.log(
+                  "⚠️ Notification not found, ID:",
+                  notificationData.id
+                );
+                return prev;
+              }
+
+              console.log("📖 Marking notification as read");
+              const updatedNotifications = prev.map((n) =>
+                n.id === notificationData.id
+                  ? { ...n, isRead: true, read: true }
+                  : n
+              );
+
+              // Recalculate unread count from the actual list
+              const newUnreadCount = updatedNotifications.filter(
+                (n) => !n.read && !n.isRead
+              ).length;
+              setUnreadCount(newUnreadCount);
+              console.log("📊 Updated unread count:", newUnreadCount);
+
+              return updatedNotifications;
+            });
+            break;
+
+          case "deleted":
+            setNotifications((prev) => {
+              const filteredNotifications = prev.filter(
+                (n) => n.id !== notificationData.id
+              );
+
+              // Recalculate unread count from the actual list
+              const newUnreadCount = filteredNotifications.filter(
+                (n) => !n.read && !n.isRead
+              ).length;
+              setUnreadCount(newUnreadCount);
+              console.log(
+                "🗑️ Notification deleted. New unread count:",
+                newUnreadCount
+              );
+
+              return filteredNotifications;
+            });
+            break;
+
+          case "allRead":
+            console.log("✅ Marking all notifications as read");
+            setNotifications((prev) =>
+              prev.map((n) => ({ ...n, isRead: true, read: true }))
+            );
+            setUnreadCount(0);
+            console.log("📊 All notifications marked as read. Unread count: 0");
+            break;
+
+          default:
+            console.log(
+              "🔄 Unknown notification action:",
+              action,
+              "- refetching"
+            );
+            await fetchNotifications();
+        }
+      } catch (error) {
+        console.error("❌ Error handling notification update:", error);
+        await fetchNotifications();
+      }
+    },
+    [pulseAnim, fetchNotifications]
+  );
+
   const api = {
     getProducts: async (params = {}) => {
       const queryParams = new URLSearchParams();
@@ -93,6 +312,9 @@ const HomeScreen = () => {
 
       try {
         const data = await AppService.get(`/products/getAll?${queryParams}`);
+        console.log("==================================");
+        console.log("Products: ", data);
+        console.log("==================================");
         return data.success ? data.data : { products: [], pagination: {} };
       } catch (error) {
         console.error("Error fetching products:", error);
@@ -172,14 +394,40 @@ const HomeScreen = () => {
     },
   };
 
-  // Enhanced real-time update handlers with better animations and feedback
+  // Enhanced real-time update handler with proper data extraction
   const handleProductUpdate = useCallback(
     async (data) => {
-      console.log("🔄 Product update received:", data);
+      console.log("============================================");
+      console.log("📦 Raw Product Update Data:", JSON.stringify(data, null, 2));
+      console.log("============================================");
 
-      if (!data || !data.data) return;
+      if (!data) {
+        console.log("⚠️ No data received");
+        return;
+      }
 
-      const { action, data: productData } = data;
+      // Extract the actual product data - handle nested structure
+      let action, productData;
+
+      // Check if data is nested (data.data pattern)
+      if (data.data && data.data.data) {
+        action = data.data.action || data.action;
+        productData = data.data.data;
+        console.log("📦 Using nested data structure");
+      } else if (data.data) {
+        action = data.action;
+        productData = data.data;
+        console.log("📦 Using single-level data structure");
+      } else {
+        console.log("⚠️ Invalid data structure");
+        return;
+      }
+
+      console.log("============================================");
+      console.log("🔄 Action:", action);
+      console.log("🔄 Product ID:", productData.id);
+      console.log("🔄 Product Name:", productData.name);
+      console.log("============================================");
 
       // Update timestamp for last update indicator
       setLastUpdateTime(Date.now());
@@ -210,10 +458,13 @@ const HomeScreen = () => {
               setProducts((prev) => {
                 // Check if product already exists to avoid duplicates
                 const exists = prev.some((p) => p.id === productData.id);
-                if (exists) return prev;
+                if (exists) {
+                  console.log("⚠️ Product already exists, skipping");
+                  return prev;
+                }
 
+                console.log("✅ Adding new product:", productData.name);
                 const newProducts = [productData, ...prev];
-                console.log("✅ Product added to list:", productData.name);
 
                 // Show success animation
                 Animated.sequence([
@@ -236,51 +487,58 @@ const HomeScreen = () => {
 
           case "updated":
           case "availability_toggled":
-            // Update existing product with smooth animation
             setProducts((prev) => {
-              const updated = prev.map((product) =>
-                product.id === productData.id
-                  ? {
-                      ...product,
-                      ...productData,
-                      // Ensure category is properly updated
-                      category: productData.category || product.category,
-                    }
-                  : product
-              );
-
-              const updatedProduct = updated.find(
+              // Find and update the product
+              const productIndex = prev.findIndex(
                 (p) => p.id === productData.id
               );
-              if (updatedProduct) {
-                console.log("🔄 Product updated:", updatedProduct.name);
+
+              if (productIndex === -1) {
+                console.log(
+                  "⚠️ Product not found in list, ID:",
+                  productData.id
+                );
+                return prev;
               }
 
-              return updated;
-            });
+              console.log("✅ Updating product:", productData.name);
 
-            // Smooth update animation
-            Animated.timing(productsOpacity, {
-              toValue: 0.8,
-              duration: 150,
-              useNativeDriver: true,
-            }).start(() => {
-              Animated.timing(productsOpacity, {
-                toValue: 1,
-                duration: 150,
-                useNativeDriver: true,
-              }).start();
+              // Create new array with updated product
+              const updatedProducts = [...prev];
+              updatedProducts[productIndex] = {
+                ...prev[productIndex],
+                ...productData,
+                // Preserve category if not provided in update
+                category: productData.category || prev[productIndex].category,
+              };
+
+              // Smooth update animation
+              Animated.sequence([
+                Animated.timing(productsOpacity, {
+                  toValue: 0.8,
+                  duration: 150,
+                  useNativeDriver: true,
+                }),
+                Animated.timing(productsOpacity, {
+                  toValue: 1,
+                  duration: 150,
+                  useNativeDriver: true,
+                }),
+              ]).start();
+
+              return updatedProducts;
             });
             break;
 
           case "deleted":
             // Remove product from list with fade out animation
             const productId = productData.id || data.productId;
+
             setProducts((prev) => {
               const filtered = prev.filter(
                 (product) => product.id !== productId
               );
-              console.log("🗑️ Product removed from list");
+              console.log("🗑️ Product removed from list, ID:", productId);
               return filtered;
             });
 
@@ -300,29 +558,76 @@ const HomeScreen = () => {
 
           default:
             // If we can't determine the specific action, refresh the products
-            console.log("🔄 Unknown product action, refreshing products");
+            console.log(
+              "🔄 Unknown product action:",
+              action,
+              "- refreshing products"
+            );
             loadProducts();
         }
       } catch (error) {
-        console.error("Error handling product update:", error);
+        console.error("❌ Error handling product update:", error);
         // Show error and fallback to reload
         Alert.alert("Update Error", "Failed to update product. Refreshing...");
         loadProducts();
       }
     },
-    [selectedCategory, pulseAnim, productsOpacity]
+    [selectedCategory, pulseAnim, productsOpacity, loadProducts]
   );
 
+  // Enhanced category update handler with proper data extraction
   const handleCategoryUpdate = useCallback(
     async (data) => {
-      console.log("🔄 Category update received:", data);
+      if (!data) {
+        console.log("⚠️ No data received");
+        return;
+      }
 
-      if (!data || !data.data) return;
+      // Extract the actual category data - handle nested structure
+      let action, categoryData;
 
-      const { action, data: categoryData } = data;
+      // Check if data is nested (data.data pattern)
+      if (data.data && data.data.data) {
+        action = data.data.action || data.action;
+        categoryData = data.data.data;
+      } else if (data.data) {
+        action = data.action;
+        categoryData = data.data;
+      } else {
+        console.log("⚠️ Invalid data structure");
+        return;
+      }
+
+      // Debounce: Ignore if same update within 500ms
+      const updateKey = `${categoryData.id}-${action}`;
+      const now = Date.now();
+
+      if (
+        lastProcessedCategoryRef.current[updateKey] &&
+        now - lastProcessedCategoryRef.current[updateKey] < 500
+      ) {
+        console.log("⏭️ Skipping duplicate category update");
+        return;
+      }
+
+      lastProcessedCategoryRef.current[updateKey] = now;
 
       // Update timestamp
       setLastUpdateTime(Date.now());
+
+      // Pulse animation for visual feedback
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
 
       try {
         switch (action) {
@@ -330,12 +635,30 @@ const HomeScreen = () => {
             // Add new category with animation
             setCategories((prev) => {
               const exists = prev.some((c) => c.id === categoryData.id);
-              if (exists) return prev;
+              if (exists) {
+                console.log("⚠️ Category already exists, skipping");
+                return prev;
+              }
 
+              console.log("✅ Adding new category:", categoryData.name);
               const newCategories = [...prev, categoryData].sort(
                 (a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)
               );
-              console.log("✅ Category added:", categoryData.name);
+
+              // Show success animation
+              Animated.sequence([
+                Animated.timing(productsOpacity, {
+                  toValue: 0.7,
+                  duration: 200,
+                  useNativeDriver: true,
+                }),
+                Animated.timing(productsOpacity, {
+                  toValue: 1,
+                  duration: 300,
+                  useNativeDriver: true,
+                }),
+              ]).start();
+
               return newCategories;
             });
             break;
@@ -343,22 +666,52 @@ const HomeScreen = () => {
           case "updated":
             // Update existing category
             setCategories((prev) => {
-              const updated = prev
-                .map((category) =>
-                  category.id === categoryData.id
-                    ? { ...category, ...categoryData }
-                    : category
-                )
-                .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+              const categoryIndex = prev.findIndex(
+                (c) => c.id === categoryData.id
+              );
 
-              console.log("🔄 Category updated:", categoryData.name);
-              return updated;
+              if (categoryIndex === -1) {
+                console.log(
+                  "⚠️ Category not found in list, ID:",
+                  categoryData.id
+                );
+                return prev;
+              }
+
+              // Create new array with updated category
+              const updatedCategories = [...prev];
+              updatedCategories[categoryIndex] = {
+                ...prev[categoryIndex],
+                ...categoryData,
+              };
+
+              // Sort by sortOrder
+              const sorted = updatedCategories.sort(
+                (a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)
+              );
+
+              // Smooth update animation
+              Animated.sequence([
+                Animated.timing(productsOpacity, {
+                  toValue: 0.8,
+                  duration: 150,
+                  useNativeDriver: true,
+                }),
+                Animated.timing(productsOpacity, {
+                  toValue: 1,
+                  duration: 150,
+                  useNativeDriver: true,
+                }),
+              ]).start();
+
+              return sorted;
             });
             break;
 
           case "deleted":
             // Remove category and handle selected category change
             const deletedId = categoryData.id || data.categoryId;
+
             setCategories((prev) => {
               const filtered = prev.filter(
                 (category) => category.id !== deletedId
@@ -367,28 +720,46 @@ const HomeScreen = () => {
               // If deleted category was selected, switch to first available category
               if (selectedCategory === deletedId && filtered.length > 0) {
                 setSelectedCategory(filtered[0].id);
-                console.log("🔄 Switched to category:", filtered[0].name);
+              } else if (filtered.length === 0) {
+                // No categories left
+                setSelectedCategory(null);
               }
 
-              console.log("🗑️ Category removed");
+              // Fade out animation
+              Animated.timing(productsOpacity, {
+                toValue: 0.6,
+                duration: 200,
+                useNativeDriver: true,
+              }).start(() => {
+                Animated.timing(productsOpacity, {
+                  toValue: 1,
+                  duration: 300,
+                  useNativeDriver: true,
+                }).start();
+              });
+
               return filtered;
             });
             break;
 
           default:
             // Fallback: reload categories
-            console.log("🔄 Unknown category action, refreshing categories");
+            console.log(
+              "🔄 Unknown category action:",
+              action,
+              "- refreshing categories"
+            );
             const updatedCategories = await api.getCategories();
             setCategories(updatedCategories);
         }
       } catch (error) {
-        console.error("Error handling category update:", error);
+        console.error("❌ Error handling category update:", error);
         Alert.alert("Update Error", "Failed to update category. Refreshing...");
         const updatedCategories = await api.getCategories();
         setCategories(updatedCategories);
       }
     },
-    [selectedCategory]
+    [selectedCategory, pulseAnim, productsOpacity, api]
   );
 
   // Handle notifications and system announcements
@@ -468,10 +839,26 @@ const HomeScreen = () => {
       loadProducts();
       loadInitialData();
     });
+    // Notification event listeners
+    on("notificationCreated", (data) => {
+      handleNotificationUpdate({ action: "created", data });
+    });
 
+    on("notificationRead", (data) => {
+      handleNotificationUpdate({ action: "read", data });
+    });
+
+    on("notificationDeleted", (data) => {
+      handleNotificationUpdate({ action: "deleted", data });
+    });
+
+    on("notificationsAllRead", (data) => {
+      handleNotificationUpdate({ action: "allRead", data });
+    });
+
+    on("notificationUpdated", handleNotificationUpdate);
     // Cleanup function
     return () => {
-      console.log("🧹 Cleaning up enhanced socket listeners");
       off("productUpdated", handleProductUpdate);
       off("categoryUpdated", handleCategoryUpdate);
       off("productCreated", handleProductUpdate);
@@ -481,12 +868,18 @@ const HomeScreen = () => {
       off("categoryDeleted", handleCategoryUpdate);
       off("notification", handleNotification);
       off("systemAnnouncement", handleSystemAnnouncement);
+      off("notificationCreated", handleNotificationUpdate);
+      off("notificationRead", handleNotificationUpdate);
+      off("notificationDeleted", handleNotificationUpdate);
+      off("notificationsAllRead", handleNotificationUpdate);
+      off("notificationUpdated", handleNotificationUpdate);
     };
   }, [
     handleProductUpdate,
     handleCategoryUpdate,
     handleNotification,
     handleSystemAnnouncement,
+    handleNotificationUpdate,
     isConnected,
   ]);
 
@@ -509,6 +902,9 @@ const HomeScreen = () => {
     const init = async () => {
       await loadInitialData();
       const sessionUser = await AppService.getUserIdFromToken();
+      console.log("================");
+      console.log("sessionUser:  ", sessionUser);
+      console.log("================");
       if (isMounted) {
         setUser(sessionUser);
       }
@@ -602,6 +998,24 @@ const HomeScreen = () => {
       setSelectedCategory(categoryId);
     }
   };
+  const handlePress = () => {
+    navigation.navigate("Notifications");
+  };
+
+  useEffect(() => {
+    const calculatedUnreadCount = notifications.filter(
+      (n) => !n.read && !n.isRead
+    ).length;
+
+    if (calculatedUnreadCount !== unreadCount) {
+      console.log("🔄 Syncing unread count:", calculatedUnreadCount);
+      setUnreadCount(calculatedUnreadCount);
+    }
+  }, [notifications]);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
 
   const handleProductPress = (item) => {
     navigation.navigate("ItemDetails", { item });
@@ -1077,11 +1491,65 @@ const HomeScreen = () => {
                 }}
                 activeOpacity={0.8}
               >
-                <Text className="text-white font-bold text-xl">
-                  {user?.firstName
-                    ? user.firstName.charAt(0).toUpperCase()
-                    : ""}
-                </Text>
+                <Animated.View
+                  style={{
+                    opacity: fadeAnim,
+                    transform: [{ scale: scaleAnim }],
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={handlePress}
+                    className="relative"
+                    activeOpacity={0.8}
+                  >
+                    <View
+                      className="w-12 h-12 rounded-full justify-center items-center"
+                      style={{
+                        backgroundColor: "rgba(255,255,255,0.2)",
+                        shadowColor: "#000",
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 6,
+                        elevation: 8,
+                      }}
+                    >
+                      <BellRing size={24} color="white" strokeWidth={2.5} />
+
+                      {/* Unread notification badge */}
+                      {unreadCount > 0 && (
+                        <View
+                          className="absolute -top-1 -right-1 min-w-[20px] h-5 rounded-full justify-center items-center px-1.5"
+                          style={{
+                            backgroundColor: "#ef4444",
+                            shadowColor: "#ef4444",
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.5,
+                            shadowRadius: 4,
+                            elevation: 4,
+                          }}
+                        >
+                          <Text className="text-xs font-bold text-white">
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Pulse animation ring for new notifications */}
+                      {unreadCount > 0 && (
+                        <Animated.View
+                          className="absolute inset-0 rounded-full border-2 border-white"
+                          style={{
+                            opacity: pulseAnim.interpolate({
+                              inputRange: [0.9, 1, 1.1],
+                              outputRange: [0.3, 0, 0.3],
+                            }),
+                            transform: [{ scale: pulseAnim }],
+                          }}
+                        />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                </Animated.View>
               </TouchableOpacity>
             </Animated.View>
           </View>
