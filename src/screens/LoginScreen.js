@@ -39,6 +39,7 @@ const LoginScreen = ({ navigation }) => {
 
   useEffect(() => {
     // Entrance animation
+
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -114,6 +115,7 @@ const LoginScreen = ({ navigation }) => {
       }, 2500);
 
       navigation.replace("Main");
+      // navigation.navigate("MyOrders");
       bottomSheetRef.current?.snapToIndex(0);
     } catch (err) {
       Alert.alert("Login Error", err.message);

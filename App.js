@@ -13,7 +13,6 @@ import RegisterScreen from "./src/screens/RegisterScreen";
 import ForgotPasswordScreen from "./src/screens/ForgotPasswordScreen";
 import HomeScreen from "./src/screens/HomeScreen";
 import CartScreen from "./src/screens/CartScreen";
-import OrdersScreen from "./src/screens/OrdersScreen";
 import OrderScreen from "./src/screens/OrderScreen";
 import ChatBotScreen from "./src/screens/ChatBotScreen";
 import PaymentScreen from "./src/screens/PaymentScreen";
@@ -24,39 +23,134 @@ import ItemDetailScreen from "./src/screens/ItemDetailScreen";
 import { CartProvider } from "./src/hooks/useCart";
 import PayPalPayment from "./src/screens/PayPalPayment";
 import NotificationScreen from "./src/screens/NotificationScreen";
+import UserOrdersScreen from "./src/screens/UserOrdersScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Main bottom tab navigator
+// Create a Stack Navigator for each tab that needs additional screens
+function HomeStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="HomeMain" component={HomeScreen} />
+      <Stack.Screen name="ItemDetails" component={ItemDetailScreen} />
+      <Stack.Screen name="Notifications" component={NotificationScreen} />
+      <Stack.Screen name="Chatbot" component={ChatBotScreen} />
+    </Stack.Navigator>
+  );
+}
+
+function CartStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="CartMain" component={CartScreen} />
+      <Stack.Screen name="Payment" component={PaymentScreen} />
+      <Stack.Screen name="Paypal" component={PayPalPayment} />
+    </Stack.Navigator>
+  );
+}
+
+function OrdersStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{ headerShown: false }}
+      initialRouteName="OrdersMain"
+    >
+      <Stack.Screen
+        name="OrdersMain"
+        component={OrderScreen}
+        options={{
+          // Reset to this screen when tab is pressed
+          tabBarOnPress: ({ navigation, defaultHandler }) => {
+            defaultHandler();
+          },
+        }}
+      />
+      <Stack.Screen name="MyOrders" component={UserOrdersScreen} />
+    </Stack.Navigator>
+  );
+}
+
+function ProfileStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="ProfileMain" component={ProfileScreen} />
+      <Stack.Screen name="MyOrders" component={UserOrdersScreen} />
+      <Stack.Screen name="adminDashboard" component={AdminDashboard} />
+    </Stack.Navigator>
+  );
+}
+
+// Main bottom tab navigator with nested stacks
 function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <CustomBottomNav {...props} />}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Cart" component={CartScreen} />
-      <Tab.Screen name="Orders" component={OrderScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen
+        name="Home"
+        component={HomeStack}
+        options={{
+          tabBarLabel: "Home",
+          title: "Home",
+        }}
+      />
+      <Tab.Screen
+        name="Cart"
+        component={CartStack}
+        options={{
+          tabBarLabel: "Cart",
+          title: "Cart",
+        }}
+      />
+      <Tab.Screen
+        name="Orders"
+        component={OrdersStack}
+        options={{
+          tabBarLabel: "Orders",
+          title: "Orders",
+        }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Reset to the first screen in OrdersStack when tab is pressed
+            navigation.navigate("Orders", { screen: "OrdersMain" });
+          },
+        })}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileStack}
+        options={{
+          tabBarLabel: "Profile",
+          title: "Profile",
+        }}
+      />
     </Tab.Navigator>
   );
 }
 
 export default function App() {
   return (
-    <CartProvider>
-      <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <CartProvider>
         <NavigationContainer>
           <Stack.Navigator
-            initialRouteName="Splash" // Changed from "Login" to "Splash"
-            screenOptions={{ headerShown: false }}
+            initialRouteName="Splash"
+            screenOptions={{
+              headerShown: false,
+              animation: "default",
+              presentation: "card",
+            }}
           >
-            {/* Splash Screen - First screen */}
-            <Stack.Screen name="Splash" component={SplashScreen} />
-
-            {/* Auth screens */}
-            <Stack.Screen name="Paypal" component={PayPalPayment} />
+            {/* Auth screens - NO BOTTOM NAV */}
+            <Stack.Screen
+              name="Splash"
+              component={SplashScreen}
+              options={{
+                animationTypeForReplace: "push",
+              }}
+            />
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
             <Stack.Screen
@@ -64,16 +158,17 @@ export default function App() {
               component={ForgotPasswordScreen}
             />
 
-            {/* Main app with bottom nav */}
-            <Stack.Screen name="Main" component={MainTabs} />
-            <Stack.Screen name="ItemDetails" component={ItemDetailScreen} />
-            <Stack.Screen name="Notifications" component={NotificationScreen} />
-            <Stack.Screen name="Payment" component={PaymentScreen} />
-            <Stack.Screen name="adminDashboard" component={AdminDashboard} />
-            <Stack.Screen name="Chatbot" component={ChatBotScreen} />
+            {/* Main app with bottom nav - BOTTOM NAV EVERYWHERE */}
+            <Stack.Screen
+              name="Main"
+              component={MainTabs}
+              options={{
+                gestureEnabled: false,
+              }}
+            />
           </Stack.Navigator>
         </NavigationContainer>
-      </GestureHandlerRootView>
-    </CartProvider>
+      </CartProvider>
+    </GestureHandlerRootView>
   );
 }

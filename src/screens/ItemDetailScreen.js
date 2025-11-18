@@ -7,14 +7,16 @@ import {
   Dimensions,
   StatusBar,
   Animated,
-  Image,
   Alert,
+  Modal,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
 import { useCart } from "../hooks/useCart";
-import { EnhancedReviewsTab } from "../components/ReviewComponents";
+import { ViewOnlyReviews } from "../components/ViewOnlyReviews";
 import { BASE_URL } from "../../config";
+import AppService from "../services/AppService";
 
 const { width, height } = Dimensions.get("window");
 
@@ -28,12 +30,13 @@ const ItemDetailScreen = ({ route, navigation }) => {
   const [activeTab, setActiveTab] = useState("details");
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
-  const [reviews, setReviews] = useState([]);
   const [itemData, setItemData] = useState(item);
 
-  // Get userId from your auth context/storage - Replace with actual implementation
-  const userId = 1; // TODO: Get from auth context
-  const orderId = null; // TODO: Set this if user has purchased the item
+  // Allergy check states
+  const [allergyModalVisible, setAllergyModalVisible] = useState(false);
+  const [allergyCheckLoading, setAllergyCheckLoading] = useState(false);
+  const [allergyResult, setAllergyResult] = useState(null);
+
   // Parse ingredients and allergens from strings
   const ingredientsList = itemData.ingredients
     ? itemData.ingredients.split(",").map((ing) => ing.trim())
@@ -42,10 +45,6 @@ const ItemDetailScreen = ({ route, navigation }) => {
   const allergensList = itemData.allergens
     ? itemData.allergens.split(",").map((all) => all.trim())
     : [];
-
-  console.log("==================================");
-  console.log("itemData -----------> : ", itemData.id);
-  console.log("==================================");
 
   const sizes = [
     {
@@ -107,42 +106,7 @@ const ItemDetailScreen = ({ route, navigation }) => {
         useNativeDriver: true,
       }),
     ]).start();
-
-    // Fetch reviews when component mounts
-    fetchReviews();
   }, []);
-
-  const fetchReviews = async () => {
-    try {
-      const response = await fetch(
-        `${BASE_URL}/reviews/product/${itemData.id}`
-      );
-      const data = await response.json();
-      if (data.success) {
-        // Add productId to each review object to prevent ReferenceError
-        const reviewsWithProductId = data.data.map((review) => ({
-          ...review,
-          productId: itemData.id,
-        }));
-        setReviews(reviewsWithProductId);
-        console.log("==================================");
-        console.log("data.data  -----------> : ", data.data);
-        console.log("==================================");
-        // Update item with latest rating and review count
-        if (data.data.length > 0) {
-          const avgRating =
-            data.data.reduce((sum, r) => sum + r.rating, 0) / data.data.length;
-          setItemData({
-            ...itemData,
-            rating: avgRating.toFixed(1),
-            reviewCount: data.data.length,
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching reviews:", error);
-    }
-  };
 
   const updateQuantity = (delta) => {
     setQuantity(Math.max(1, quantity + delta));
@@ -160,12 +124,84 @@ const ItemDetailScreen = ({ route, navigation }) => {
     return `${baseTime}-${maxTime} min`;
   };
 
-  const handleAddToCart = () => {
+  // Check user allergies before adding to cart
+  const checkAllergies = async () => {
+    try {
+      setAllergyCheckLoading(true);
+
+      // Get userId from your AppService
+      const userData = await AppService.getUserIdFromToken();
+
+      console.log("======================");
+      console.log("userData from token:", userData);
+      console.log("======================");
+
+      if (!userData || !userData.id) {
+        // No user logged in, skip allergy check
+        console.log("No user data found, skipping allergy check");
+        return null;
+      }
+
+      console.log(
+        "Checking allergies for user:",
+        userData.id,
+        "product:",
+        itemData.id
+      );
+
+      const response = await fetch(`${BASE_URL}/allergy/check-allergy`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: userData.id,
+          productId: itemData.id,
+        }),
+      });
+
+      const data = await response.json();
+
+      console.log("Allergy check response:", data);
+
+      if (response.ok) {
+        return data;
+      } else {
+        console.error("Allergy check failed:", data);
+        return null;
+      }
+    } catch (error) {
+      console.error("Error checking allergies:", error);
+      return null;
+    } finally {
+      setAllergyCheckLoading(false);
+    }
+  };
+
+  const handleAddToCart = async () => {
     if (!itemData.isAvailable) {
       Alert.alert("Unavailable", "This item is currently unavailable.");
       return;
     }
 
+    // Check allergies first
+    const allergyCheck = await checkAllergies();
+
+    if (allergyCheck) {
+      setAllergyResult(allergyCheck);
+
+      // Show warning modal if there's any risk
+      if (allergyCheck.verdict !== "no_risk") {
+        setAllergyModalVisible(true);
+        return;
+      }
+    }
+
+    // If no risk or no allergy data, proceed to add to cart
+    proceedToCart();
+  };
+
+  const proceedToCart = () => {
     const cartItem = {
       id: itemData.id,
       name: itemData.name,
@@ -184,6 +220,7 @@ const ItemDetailScreen = ({ route, navigation }) => {
       [
         {
           text: "Continue Shopping",
+          onPress: () => navigation.navigate("Main", { screen: "Home" }),
           style: "cancel",
         },
         {
@@ -192,6 +229,55 @@ const ItemDetailScreen = ({ route, navigation }) => {
         },
       ]
     );
+
+    setAllergyModalVisible(false);
+  };
+
+  const handleLearnMore = () => {
+    setAllergyModalVisible(false);
+
+    // Navigate to chatbot with context about the allergy concern
+    const chatContext = {
+      type: "allergy_concern",
+      product: itemData.name,
+      allergyInfo: allergyResult,
+    };
+
+    // Navigate to Chatbot screen - corrected navigation path for nested navigator
+    navigation.navigate("Chatbot", { context: chatContext });
+  };
+
+  const getRiskColor = (verdict) => {
+    switch (verdict) {
+      case "high_risk":
+        return ["#EF4444", "#DC2626"];
+      case "low_risk":
+        return ["#F59E0B", "#F97316"];
+      default:
+        return ["#10B981", "#14B8A6"];
+    }
+  };
+
+  const getRiskIcon = (verdict) => {
+    switch (verdict) {
+      case "high_risk":
+        return "warning";
+      case "low_risk":
+        return "alert-circle";
+      default:
+        return "checkmark-circle";
+    }
+  };
+
+  const getRiskTitle = (verdict) => {
+    switch (verdict) {
+      case "high_risk":
+        return "⚠️ High Risk Detected";
+      case "low_risk":
+        return "⚡ Caution Advised";
+      default:
+        return "✅ Safe to Consume";
+    }
   };
 
   const handleBack = () => {
@@ -199,15 +285,9 @@ const ItemDetailScreen = ({ route, navigation }) => {
   };
 
   const handleReviewsUpdate = (updatedReviews) => {
-    // Ensure updatedReviews also have productId
-    const reviewsWithProductId = updatedReviews.map((review) => ({
-      ...review,
-      productId: itemData.id,
-    }));
-    setReviews(reviewsWithProductId);
-    if (updatedReviews.length > 0) {
+    if (updatedReviews && updatedReviews.length > 0) {
       const avgRating =
-        updatedReviews.reduce((sum, r) => sum + r.rating, 0) /
+        updatedReviews.reduce((sum, r) => sum + (r.rating || 0), 0) /
         updatedReviews.length;
       setItemData({
         ...itemData,
@@ -502,12 +582,8 @@ const ItemDetailScreen = ({ route, navigation }) => {
 
       case "reviews":
         return (
-          <EnhancedReviewsTab
+          <ViewOnlyReviews
             item={itemData}
-            reviews={reviews}
-            userId={userId}
-            orderId={orderId}
-            productId={itemData.id}
             onReviewsUpdate={handleReviewsUpdate}
           />
         );
@@ -773,12 +849,215 @@ const ItemDetailScreen = ({ route, navigation }) => {
         </ScrollView>
       </View>
 
+      {/* Allergy Warning Modal */}
+      <Modal
+        visible={allergyModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setAllergyModalVisible(false)}
+      >
+        <View className="flex-1 bg-black/50 justify-end">
+          <View
+            className="bg-white rounded-t-3xl"
+            style={{ maxHeight: height * 0.8 }}
+          >
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {allergyResult && (
+                <View className="p-6">
+                  {/* Header */}
+                  <LinearGradient
+                    colors={getRiskColor(allergyResult.verdict)}
+                    className="rounded-2xl p-6 mb-6"
+                  >
+                    <View className="items-center">
+                      <Icon
+                        name={getRiskIcon(allergyResult.verdict)}
+                        size={64}
+                        color="#fff"
+                      />
+                      <Text className="text-white text-2xl font-bold mt-4 text-center">
+                        {getRiskTitle(allergyResult.verdict)}
+                      </Text>
+                    </View>
+                  </LinearGradient>
+
+                  {/* Confidence Level */}
+                  <View className="mb-6">
+                    <Text className="text-slate-700 text-sm font-medium mb-2">
+                      Confidence Level
+                    </Text>
+                    <View className="bg-slate-200 h-3 rounded-full overflow-hidden">
+                      <LinearGradient
+                        colors={getRiskColor(allergyResult.verdict)}
+                        style={{
+                          width: `${(allergyResult.confidence * 100).toFixed(
+                            0
+                          )}%`,
+                          height: "100%",
+                        }}
+                      />
+                    </View>
+                    <Text className="text-slate-500 text-xs mt-1">
+                      {(allergyResult.confidence * 100).toFixed(0)}% confident
+                    </Text>
+                  </View>
+
+                  {/* Reason */}
+                  <View className="bg-slate-50 rounded-2xl p-4 mb-6">
+                    <View className="flex-row items-center mb-2">
+                      <Icon
+                        name="information-circle"
+                        size={20}
+                        color="#64748B"
+                      />
+                      <Text className="text-slate-900 text-lg font-bold ml-2">
+                        Analysis
+                      </Text>
+                    </View>
+                    <Text className="text-slate-700 text-base leading-6">
+                      {allergyResult.reason}
+                    </Text>
+                  </View>
+
+                  {/* Matched Allergens */}
+                  {allergyResult.matched_allergens &&
+                    allergyResult.matched_allergens.length > 0 && (
+                      <View className="mb-6">
+                        <View className="flex-row items-center mb-3">
+                          <Icon name="alert-circle" size={20} color="#EF4444" />
+                          <Text className="text-slate-900 text-lg font-bold ml-2">
+                            Detected Allergens
+                          </Text>
+                        </View>
+                        <View className="flex-row flex-wrap">
+                          {allergyResult.matched_allergens.map(
+                            (allergen, index) => (
+                              <LinearGradient
+                                key={index}
+                                colors={["#EF4444", "#F97316"]}
+                                className="px-4 py-2 rounded-full mr-2 mb-2"
+                              >
+                                <Text className="text-white text-sm font-medium">
+                                  {allergen}
+                                </Text>
+                              </LinearGradient>
+                            )
+                          )}
+                        </View>
+                      </View>
+                    )}
+
+                  {/* Recommendation Badge */}
+                  <View className="items-center mb-6">
+                    <LinearGradient
+                      colors={
+                        allergyResult.recommendation === "block"
+                          ? ["#EF4444", "#DC2626"]
+                          : allergyResult.recommendation === "caution"
+                          ? ["#F59E0B", "#F97316"]
+                          : ["#10B981", "#14B8A6"]
+                      }
+                      className="px-6 py-3 rounded-full"
+                    >
+                      <Text className="text-white text-base font-bold">
+                        Recommendation:{" "}
+                        {allergyResult.recommendation.toUpperCase()}
+                      </Text>
+                    </LinearGradient>
+                  </View>
+
+                  {/* Action Buttons */}
+                  <View className="space-y-3">
+                    {/* Learn More Button */}
+                    <TouchableOpacity
+                      onPress={handleLearnMore}
+                      className="mb-3"
+                    >
+                      <LinearGradient
+                        colors={["#3B82F6", "#8B5CF6"]}
+                        className="py-4 rounded-2xl flex-row items-center justify-center"
+                      >
+                        <Icon name="chatbubbles" size={24} color="#fff" />
+                        <Text className="text-white text-lg font-bold ml-2">
+                          Talk to AI Assistant
+                        </Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+
+                    {/* Proceed Anyway Button - Show for all risk levels */}
+                    <TouchableOpacity onPress={proceedToCart} className="mb-3">
+                      <View className="bg-slate-100 py-4 rounded-2xl flex-row items-center justify-center border-2 border-slate-200">
+                        <Icon name="cart" size={24} color="#64748B" />
+                        <Text className="text-slate-700 text-lg font-bold ml-2">
+                          Add to Cart Anyway
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    {/* Warning for high risk items */}
+                    {allergyResult.recommendation === "block" && (
+                      <View className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-3">
+                        <View className="flex-row items-start">
+                          <Icon
+                            name="shield-checkmark"
+                            size={24}
+                            color="#EF4444"
+                          />
+                          <View className="flex-1 ml-3">
+                            <Text className="text-red-800 text-base font-semibold mb-1">
+                              ⚠️ High Risk Warning
+                            </Text>
+                            <Text className="text-red-700 text-sm leading-5">
+                              Based on your medical history, this product poses
+                              a significant health risk. We strongly recommend
+                              consulting with our AI assistant before
+                              proceeding.
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Cancel Button */}
+                    <TouchableOpacity
+                      onPress={() => setAllergyModalVisible(false)}
+                      className="py-4 items-center"
+                    >
+                      <Text className="text-slate-500 text-base font-semibold">
+                        Cancel
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Disclaimer */}
+                  <View className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mt-4">
+                    <View className="flex-row items-start">
+                      <Icon
+                        name="information-circle"
+                        size={20}
+                        color="#3B82F6"
+                      />
+                      <Text className="text-blue-800 text-xs leading-5 ml-2 flex-1">
+                        This is an AI-powered assessment based on your allergy
+                        profile. Always consult with healthcare professionals
+                        for medical advice. We are not liable for health
+                        consequences.
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Bottom Action Bar */}
-      <View className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-slate-200">
+      <View className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 pb-20">
         <View className="flex-row items-center justify-between px-6 py-4">
           {/* Quantity Controls */}
           <View className="flex-1">
-            <Text className="text-slate-700 text-sm font-medium mb-2">
+            <Text className="text-gray-700 text-sm font-medium mb-2">
               Quantity
             </Text>
             <View className="flex-row items-center">
@@ -788,55 +1067,48 @@ const ItemDetailScreen = ({ route, navigation }) => {
               >
                 <Icon name="remove" size={20} color="#8B5CF6" />
               </TouchableOpacity>
-              <View className="mx-4 w-12 h-10 bg-slate-100 rounded-xl items-center justify-center">
-                <Text className="text-slate-900 text-lg font-bold">
+              <View className="mx-4 w-12 h-10 bg-gray-100 rounded-xl items-center justify-center">
+                <Text className="text-gray-900 text-lg font-bold">
                   {quantity}
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={() => updateQuantity(1)}
-                className="w-10 h-10 rounded-xl overflow-hidden"
+                className="w-10 h-10 bg-purple-500 rounded-xl items-center justify-center"
               >
-                <LinearGradient
-                  colors={["#8B5CF6", "#A855F7"]}
-                  className="w-full h-full items-center justify-center"
-                >
-                  <Icon name="add" size={20} color="#fff" />
-                </LinearGradient>
+                <Icon name="add" size={20} color="#fff" />
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Price */}
-          <View className="flex-1 items-center">
-            <Text className="text-slate-700 text-sm font-medium mb-2">
-              Total
-            </Text>
-            <Text className="text-slate-900 text-2xl font-bold">
-              R{getCurrentPrice().toFixed(2)}
-            </Text>
-          </View>
+          {/* Price and Add to Cart Button */}
+          <View className="flex-row items-center flex-1 justify-end">
+            <View className="items-end mr-4">
+              <Text className="text-gray-700 text-sm font-medium mb-2">
+                Total
+              </Text>
+              <Text className="text-gray-900 text-2xl font-bold">
+                R{getCurrentPrice().toFixed(2)}
+              </Text>
+            </View>
 
-          {/* Add to Cart Button */}
-          <View className="flex-1 items-end">
             <TouchableOpacity
               onPress={handleAddToCart}
-              className="rounded-2xl overflow-hidden"
-              disabled={!itemData.isAvailable}
+              className={`rounded-2xl px-6 py-4 flex-row items-center ${
+                itemData.isAvailable ? "bg-purple-500" : "bg-gray-400"
+              }`}
+              disabled={!itemData.isAvailable || allergyCheckLoading}
             >
-              <LinearGradient
-                colors={
-                  itemData.isAvailable
-                    ? ["#8B5CF6", "#A855F7"]
-                    : ["#9CA3AF", "#6B7280"]
-                }
-                className="flex-row items-center px-6 py-4"
-              >
-                <Icon name="bag-add" size={24} color="#fff" />
-                <Text className="text-white text-base font-bold ml-2">
-                  {itemData.isAvailable ? "Add to Cart" : "Unavailable"}
-                </Text>
-              </LinearGradient>
+              {allergyCheckLoading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Icon name="bag-add" size={24} color="#fff" />
+                  <Text className="text-white text-base font-bold ml-2">
+                    {itemData.isAvailable ? "Add" : "N/A"}
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>

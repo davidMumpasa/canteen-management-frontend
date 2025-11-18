@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
-  Image,
   Alert,
   Animated,
 } from "react-native";
@@ -22,9 +21,6 @@ const CartScreen = ({ route, navigation }) => {
     removeItem,
     clearCart,
     getSubtotal,
-    getTax,
-    getDeliveryFee,
-    getTotal,
     getItemCount,
   } = useCart();
   const [cartItem, setCartItem] = useState("");
@@ -33,16 +29,12 @@ const CartScreen = ({ route, navigation }) => {
   const [slideAnim] = useState(new Animated.Value(30));
 
   // Handle adding item from ItemDetailScreen
-  // Handle adding item from ItemDetailScreen
   useEffect(() => {
     if (route.params?.cartItem) {
       const newItem = route.params.cartItem;
-
       setCartItem(newItem);
       addItem(newItem);
       console.log("Added cartItem: ", newItem);
-
-      // Clear the param so it doesn’t trigger again on re-renders
       navigation.setParams({ cartItem: null });
     }
   }, [route.params?.cartItem, addItem, navigation]);
@@ -107,7 +99,7 @@ const CartScreen = ({ route, navigation }) => {
 
     Alert.alert(
       "Checkout Confirmation",
-      `Items: ${getItemCount()}\nTotal: R${getTotal().toFixed(
+      `Items: ${getItemCount()}\nTotal: R${getSubtotal().toFixed(
         2
       )}\n\nProceed to payment?`,
       [
@@ -123,7 +115,7 @@ const CartScreen = ({ route, navigation }) => {
     );
   };
 
-  const CartItemCard = ({ item, index }) => (
+  const CartItemCard = ({ item }) => (
     <Animated.View
       style={{
         opacity: fadeAnim,
@@ -142,161 +134,254 @@ const CartScreen = ({ route, navigation }) => {
           },
         ],
       }}
-      className="bg-white rounded-3xl p-5 mb-4 shadow-lg border border-slate-100"
+      className="mb-6"
     >
-      <View className="flex-row items-center">
-        {/* Item Image with Enhanced Design */}
-        <View className="w-24 h-24 mr-4 rounded-2xl overflow-hidden shadow-md">
-          {item.image ? (
-            // Display the icon/emoji as text
-            <View className="w-full h-full justify-center items-center bg-white">
-              <Text
-                style={{
-                  fontSize: 36, // adjust size as needed
-                  textAlign: "center",
-                }}
-              >
-                {item.image}
-              </Text>
-            </View>
-          ) : (
-            <LinearGradient
-              colors={["#667EEA", "#764BA2"]}
-              className="w-full h-full items-center justify-center"
-            >
-              <Icon name="restaurant" size={36} color="#fff" />
-            </LinearGradient>
-          )}
+      <LinearGradient
+        colors={["#FFFFFF", "#FAFBFF"]}
+        className="rounded-3xl overflow-hidden shadow-2xl"
+        style={{
+          shadowColor: "#8B5CF6",
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.15,
+          shadowRadius: 20,
+          elevation: 12,
+        }}
+      >
+        {/* Decorative Top Border */}
+        <LinearGradient
+          colors={["#8B5CF6", "#EC4899", "#F59E0B"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          className="h-1.5"
+        />
 
-          {/* Overlay gradient for better text visibility */}
-          <LinearGradient
-            colors={["transparent", "rgba(0,0,0,0.3)"]}
-            className="absolute bottom-0 left-0 right-0 h-6"
-          />
-        </View>
+        {/* Card Content */}
+        <View className="p-6">
+          <View className="flex-row">
+            {/* Item Image with Stunning Border */}
+            <View className="mr-5">
+              <View className="relative">
+                <LinearGradient
+                  colors={["#8B5CF6", "#EC4899", "#F59E0B"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  className="p-1 rounded-3xl"
+                  style={{
+                    shadowColor: "#8B5CF6",
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 8,
+                    elevation: 6,
+                  }}
+                >
+                  <View className="w-32 h-32 rounded-3xl overflow-hidden bg-white">
+                    {item.image ? (
+                      <LinearGradient
+                        colors={["#FAF5FF", "#FDF4FF", "#FFF7ED"]}
+                        className="w-full h-full justify-center items-center"
+                      >
+                        <Text style={{ fontSize: 56, textAlign: "center" }}>
+                          {item.image}
+                        </Text>
+                      </LinearGradient>
+                    ) : (
+                      <LinearGradient
+                        colors={["#667EEA", "#764BA2"]}
+                        className="w-full h-full items-center justify-center"
+                      >
+                        <Icon name="restaurant" size={48} color="#fff" />
+                      </LinearGradient>
+                    )}
+                  </View>
+                </LinearGradient>
 
-        {/* Item Details with Enhanced Typography */}
-        <View className="flex-1">
-          <Text
-            className="text-slate-900 text-xl font-bold mb-2"
-            numberOfLines={2}
-          >
-            {item.name}
-          </Text>
-
-          <View className="flex-row items-center mb-3">
-            <LinearGradient
-              colors={["#8B5CF6", "#A855F7"]}
-              className="px-3 py-1.5 rounded-full mr-3"
-            >
-              <Text className="text-white text-xs font-bold">
-                {item.selectedSize}
-              </Text>
-            </LinearGradient>
-
-            <View className="bg-slate-100 px-3 py-1.5 rounded-full">
-              <Text className="text-slate-600 text-xs font-semibold">
-                R{item.price.toFixed(2)} each
-              </Text>
-            </View>
-          </View>
-
-          <View className="flex-row items-center justify-between">
-            <View>
-              <Text className="text-purple-600 text-2xl font-bold">
-                R{item.totalPrice.toFixed(2)}
-              </Text>
-              <Text className="text-slate-500 text-sm">
-                {item.quantity} × R{item.price.toFixed(2)}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Enhanced Quantity Controls */}
-        <View className="items-center ml-4">
-          <View className="bg-slate-50 rounded-2xl p-3 shadow-sm">
-            <View className="flex-row items-center mb-3">
-              <TouchableOpacity
-                onPress={() =>
-                  handleUpdateQuantity(
-                    item.id,
-                    item.selectedSize,
-                    item.quantity - 1
-                  )
-                }
-                className="w-10 h-10 border-2 border-purple-300 rounded-xl items-center justify-center bg-white shadow-sm"
-              >
-                <Icon name="remove" size={18} color="#8B5CF6" />
-              </TouchableOpacity>
-
-              <View className="mx-4 w-12 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl items-center justify-center shadow-md">
-                <Text className="text-white text-lg font-bold">
-                  {item.quantity}
-                </Text>
+                {/* Quantity Badge */}
+                <View className="absolute -top-2 -right-2">
+                  <LinearGradient
+                    colors={["#8B5CF6", "#A855F7"]}
+                    className="w-8 h-8 rounded-full items-center justify-center border-3 border-white"
+                    style={{
+                      shadowColor: "#000",
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.25,
+                      shadowRadius: 4,
+                      elevation: 5,
+                    }}
+                  >
+                    <Text className="text-white text-sm font-bold">
+                      {item.quantity}
+                    </Text>
+                  </LinearGradient>
+                </View>
               </View>
+            </View>
 
-              <TouchableOpacity
-                onPress={() =>
-                  handleUpdateQuantity(
-                    item.id,
-                    item.selectedSize,
-                    item.quantity + 1
-                  )
-                }
-                className="w-10 h-10 rounded-xl overflow-hidden shadow-sm"
+            {/* Item Details */}
+            <View className="flex-1">
+              <Text
+                className="text-slate-900 text-xl font-bold mb-3 leading-6"
+                numberOfLines={2}
               >
+                {item.name}
+              </Text>
+
+              <View className="flex-row items-center flex-wrap mb-4">
                 <LinearGradient
                   colors={["#8B5CF6", "#A855F7"]}
-                  className="w-full h-full items-center justify-center"
+                  className="px-4 py-2 rounded-full mr-2 mb-2"
+                  style={{
+                    shadowColor: "#8B5CF6",
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 4,
+                    elevation: 3,
+                  }}
                 >
-                  <Icon name="add" size={18} color="#fff" />
+                  <Text className="text-white text-sm font-bold">
+                    {item.selectedSize}
+                  </Text>
                 </LinearGradient>
-              </TouchableOpacity>
+
+                <View className="bg-slate-100 px-4 py-2 rounded-full mb-2">
+                  <Text className="text-slate-700 text-sm font-semibold">
+                    R{item.price.toFixed(2)} each
+                  </Text>
+                </View>
+              </View>
+
+              <View className="mt-1">
+                <Text className="text-slate-500 text-xs mb-1.5 font-medium">
+                  Item Total
+                </Text>
+                <LinearGradient
+                  colors={["#8B5CF6", "#A855F7"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  className="self-start px-5 py-2.5 rounded-xl"
+                  style={{
+                    shadowColor: "#8B5CF6",
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 6,
+                    elevation: 4,
+                  }}
+                >
+                  <Text className="text-white text-2xl font-bold">
+                    R{item.totalPrice.toFixed(2)}
+                  </Text>
+                </LinearGradient>
+              </View>
+            </View>
+          </View>
+
+          {/* Elegant Divider */}
+          <View className="my-6">
+            <LinearGradient
+              colors={["transparent", "#E2E8F0", "transparent"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              className="h-px"
+            />
+          </View>
+
+          {/* Quantity Controls & Remove Button */}
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center">
+              <Text className="text-slate-600 text-base font-semibold mr-5">
+                Quantity
+              </Text>
+
+              <View className="flex-row items-center bg-slate-50 rounded-2xl p-2">
+                <TouchableOpacity
+                  onPress={() =>
+                    handleUpdateQuantity(
+                      item.id,
+                      item.selectedSize,
+                      item.quantity - 1
+                    )
+                  }
+                  className="w-11 h-11 rounded-xl items-center justify-center bg-white border-2 border-purple-200"
+                  style={{
+                    shadowColor: "#8B5CF6",
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 3,
+                    elevation: 2,
+                  }}
+                >
+                  <Icon name="remove" size={22} color="#8B5CF6" />
+                </TouchableOpacity>
+
+                <View className="mx-4 min-w-[52px] items-center">
+                  <LinearGradient
+                    colors={["#8B5CF6", "#A855F7"]}
+                    className="px-5 py-2.5 rounded-xl"
+                    style={{
+                      shadowColor: "#8B5CF6",
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 4,
+                      elevation: 3,
+                    }}
+                  >
+                    <Text className="text-white text-xl font-bold">
+                      {item.quantity}
+                    </Text>
+                  </LinearGradient>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() =>
+                    handleUpdateQuantity(
+                      item.id,
+                      item.selectedSize,
+                      item.quantity + 1
+                    )
+                  }
+                  className="w-11 h-11 rounded-xl overflow-hidden"
+                  style={{
+                    shadowColor: "#8B5CF6",
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 4,
+                    elevation: 3,
+                  }}
+                >
+                  <LinearGradient
+                    colors={["#8B5CF6", "#A855F7"]}
+                    className="w-full h-full items-center justify-center"
+                  >
+                    <Icon name="add" size={22} color="#fff" />
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <TouchableOpacity
               onPress={() => handleRemoveItem(item.id, item.selectedSize)}
-              className="self-center p-2 rounded-xl bg-red-50"
+              className="w-12 h-12 rounded-xl items-center justify-center"
+              style={{
+                shadowColor: "#EF4444",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.2,
+                shadowRadius: 4,
+                elevation: 2,
+              }}
             >
-              <Icon name="trash" size={20} color="#EF4444" />
+              <LinearGradient
+                colors={["#FEE2E2", "#FECACA"]}
+                className="w-full h-full items-center justify-center rounded-xl border-2 border-red-200"
+              >
+                <Icon name="trash" size={22} color="#EF4444" />
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </LinearGradient>
     </Animated.View>
   );
 
-  const SummaryRow = ({ label, value, isTotal = false, isFree = false }) => (
-    <View
-      className={`flex-row justify-between items-center ${
-        isTotal ? "py-4 border-t-2 border-slate-200 mt-3" : "py-2"
-      }`}
-    >
-      <Text
-        className={`${
-          isTotal
-            ? "text-slate-900 text-xl font-bold"
-            : "text-slate-600 text-base font-medium"
-        }`}
-      >
-        {label}
-      </Text>
-      <Text
-        className={`${
-          isTotal
-            ? "text-purple-600 text-2xl font-bold"
-            : isFree
-            ? "text-emerald-600 text-base font-bold"
-            : "text-slate-700 text-base font-semibold"
-        }`}
-      >
-        {isFree && value === 0 ? "FREE" : `R${value.toFixed(2)}`}
-      </Text>
-    </View>
-  );
-
-  // Loading state with enhanced design
+  // Loading state
   if (loading) {
     return (
       <View className="flex-1 bg-slate-50">
@@ -319,16 +404,16 @@ const CartScreen = ({ route, navigation }) => {
           >
             <LinearGradient
               colors={["#fff", "#f0f0f0"]}
-              className="w-20 h-20 rounded-full items-center justify-center shadow-lg"
+              className="w-24 h-24 rounded-full items-center justify-center shadow-lg"
             >
-              <Icon name="bag" size={40} color="#8B5CF6" />
+              <Icon name="bag" size={48} color="#8B5CF6" />
             </LinearGradient>
           </Animated.View>
 
-          <Text className="text-white text-lg font-semibold mt-6">
+          <Text className="text-white text-xl font-semibold mt-8">
             Loading your cart...
           </Text>
-          <View className="w-32 h-2 bg-white/20 rounded-full mt-4 overflow-hidden">
+          <View className="w-40 h-2 bg-white/20 rounded-full mt-5 overflow-hidden">
             <Animated.View
               style={{
                 width: fadeAnim.interpolate({
@@ -348,68 +433,104 @@ const CartScreen = ({ route, navigation }) => {
     <View className="flex-1 bg-slate-50">
       <StatusBar barStyle="light-content" />
 
-      {/* Enhanced Header */}
+      {/* Stunning Header */}
       <LinearGradient
         colors={["#667EEA", "#764BA2", "#8B5CF6"]}
-        className="pt-16 pb-8 px-6 relative overflow-hidden"
+        className="pt-16 pb-10 px-6 relative overflow-hidden"
       >
         {/* Animated Background Elements */}
         <Animated.View
           style={{
-            opacity: fadeAnim,
+            opacity: fadeAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 0.6],
+            }),
             transform: [{ rotate: "45deg" }],
           }}
-          className="absolute w-24 h-24 bg-white/10 rounded-3xl top-12 right-8"
+          className="absolute w-32 h-32 bg-white/10 rounded-3xl top-8 right-4"
         />
         <Animated.View
           style={{
-            opacity: fadeAnim,
+            opacity: fadeAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 0.4],
+            }),
             transform: [{ rotate: "-30deg" }],
           }}
-          className="absolute w-16 h-16 bg-white/10 rounded-2xl top-32 left-12"
+          className="absolute w-24 h-24 bg-white/10 rounded-3xl top-28 left-8"
         />
-        <View className="absolute w-32 h-32 bg-white/5 rounded-full -top-16 -left-16" />
-        <View className="absolute w-40 h-40 bg-white/5 rounded-full -bottom-20 -right-20" />
+        <View className="absolute w-40 h-40 bg-white/5 rounded-full -top-20 -left-20" />
+        <View className="absolute w-48 h-48 bg-white/5 rounded-full -bottom-24 -right-24" />
 
-        <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center justify-between mb-6">
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            className="w-14 h-14 bg-white/20 rounded-2xl items-center justify-center shadow-lg"
+            className="w-14 h-14 bg-white/20 rounded-2xl items-center justify-center"
+            style={{
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 6,
+              elevation: 5,
+            }}
           >
-            <Icon name="arrow-back" size={26} color="#fff" />
+            <Icon name="arrow-back" size={28} color="#fff" />
           </TouchableOpacity>
-
-          <Animated.View
-            style={{ opacity: fadeAnim }}
-            className="flex-1 items-center mx-4"
-          >
-            <Text className="text-white text-2xl font-bold">Shopping Cart</Text>
-            <View className="flex-row items-center mt-2">
-              <View className="w-6 h-6 bg-white/20 rounded-full items-center justify-center mr-2">
-                <Text className="text-white text-xs font-bold">
-                  {getItemCount()}
-                </Text>
-              </View>
-              <Text className="text-white/90 text-sm font-medium">
-                {items.length} {items.length === 1 ? "item" : "items"}
-              </Text>
-            </View>
-          </Animated.View>
 
           {items.length > 0 && (
             <TouchableOpacity
               onPress={handleClearCart}
-              className="w-14 h-14 bg-white/20 rounded-2xl items-center justify-center shadow-lg"
+              className="w-14 h-14 bg-white/20 rounded-2xl items-center justify-center"
+              style={{
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 6,
+                elevation: 5,
+              }}
             >
-              <Icon name="trash" size={26} color="#fff" />
+              <Icon name="trash" size={28} color="#fff" />
             </TouchableOpacity>
           )}
         </View>
+
+        <Animated.View style={{ opacity: fadeAnim }} className="items-center">
+          <View className="flex-row items-center mb-3">
+            <LinearGradient
+              colors={["#fff", "#f0f0f0"]}
+              className="w-16 h-16 rounded-2xl items-center justify-center mr-4"
+              style={{
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.2,
+                shadowRadius: 8,
+                elevation: 6,
+              }}
+            >
+              <Icon name="bag-handle" size={32} color="#8B5CF6" />
+            </LinearGradient>
+            <View>
+              <Text className="text-white text-3xl font-bold">
+                Shopping Cart
+              </Text>
+              <View className="flex-row items-center mt-1">
+                <View className="w-7 h-7 bg-white/20 rounded-full items-center justify-center mr-2">
+                  <Text className="text-white text-sm font-bold">
+                    {getItemCount()}
+                  </Text>
+                </View>
+                <Text className="text-white/90 text-base font-medium">
+                  {items.length} {items.length === 1 ? "item" : "items"}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </Animated.View>
       </LinearGradient>
 
       {items.length === 0 ? (
-        // Enhanced Empty Cart State
-        <View className="flex-1 items-center justify-center px-6">
+        // Beautiful Empty Cart State
+        <View className="flex-1 items-center justify-center px-8">
           <Animated.View
             style={{
               opacity: fadeAnim,
@@ -417,34 +538,52 @@ const CartScreen = ({ route, navigation }) => {
             }}
             className="items-center"
           >
-            <LinearGradient
-              colors={["#F8FAFC", "#E2E8F0"]}
-              className="w-40 h-40 rounded-full items-center justify-center mb-8 shadow-xl"
-            >
+            <View className="mb-10">
               <LinearGradient
-                colors={["#8B5CF6", "#A855F7"]}
-                className="w-24 h-24 rounded-full items-center justify-center"
+                colors={["#F8FAFC", "#E2E8F0"]}
+                className="w-48 h-48 rounded-full items-center justify-center"
+                style={{
+                  shadowColor: "#8B5CF6",
+                  shadowOffset: { width: 0, height: 10 },
+                  shadowOpacity: 0.2,
+                  shadowRadius: 25,
+                  elevation: 15,
+                }}
               >
-                <Icon name="bag-outline" size={48} color="#fff" />
+                <LinearGradient
+                  colors={["#8B5CF6", "#A855F7"]}
+                  className="w-32 h-32 rounded-full items-center justify-center"
+                >
+                  <Icon name="bag-outline" size={64} color="#fff" />
+                </LinearGradient>
               </LinearGradient>
-            </LinearGradient>
+            </View>
 
-            <Text className="text-slate-900 text-3xl font-bold mb-4 text-center">
+            <Text className="text-slate-900 text-4xl font-bold mb-5 text-center">
               Your Cart is Empty
             </Text>
-            <Text className="text-slate-500 text-lg text-center mb-10 leading-7 max-w-sm">
+            <Text className="text-slate-500 text-lg text-center mb-12 leading-8 max-w-md">
               Discover amazing dishes and add them to your cart to get started
               on your culinary journey!
             </Text>
 
-            <TouchableOpacity onPress={() => navigation.navigate("Home")}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("Home")}
+              style={{
+                shadowColor: "#667EEA",
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.4,
+                shadowRadius: 12,
+                elevation: 8,
+              }}
+            >
               <LinearGradient
                 colors={["#667EEA", "#764BA2"]}
-                className="px-10 py-5 rounded-2xl shadow-xl"
+                className="px-12 py-6 rounded-2xl"
               >
                 <View className="flex-row items-center">
-                  <Icon name="restaurant" size={24} color="#fff" />
-                  <Text className="text-white text-lg font-bold ml-3">
+                  <Icon name="restaurant" size={28} color="#fff" />
+                  <Text className="text-white text-xl font-bold ml-4">
                     Browse Menu
                   </Text>
                 </View>
@@ -453,30 +592,37 @@ const CartScreen = ({ route, navigation }) => {
           </Animated.View>
         </View>
       ) : (
-        // Enhanced Cart with Items
+        // Cart with Items
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 200 }}
+          contentContainerStyle={{ paddingBottom: 220 }}
         >
           {/* Cart Items Section */}
           <View className="px-6 py-8">
             <Animated.View
               style={{ opacity: fadeAnim }}
-              className="flex-row items-center mb-6"
+              className="flex-row items-center mb-8"
             >
               <LinearGradient
                 colors={["#8B5CF6", "#A855F7"]}
-                className="w-12 h-12 rounded-2xl items-center justify-center mr-4 shadow-lg"
+                className="w-14 h-14 rounded-2xl items-center justify-center mr-4"
+                style={{
+                  shadowColor: "#8B5CF6",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 5,
+                }}
               >
-                <Icon name="bag" size={24} color="#fff" />
+                <Icon name="basket" size={28} color="#fff" />
               </LinearGradient>
               <View>
                 <Text className="text-slate-900 text-2xl font-bold">
                   Your Items
                 </Text>
-                <Text className="text-slate-500 text-sm">
-                  {getItemCount()} items • R{getSubtotal().toFixed(2)} subtotal
+                <Text className="text-slate-500 text-base mt-0.5">
+                  {getItemCount()} items in cart
                 </Text>
               </View>
             </Animated.View>
@@ -490,121 +636,118 @@ const CartScreen = ({ route, navigation }) => {
             ))}
           </View>
 
-          {/* Enhanced Order Summary */}
-          <View className="px-6 pb-8">
+          {/* Beautiful Order Summary */}
+          <View className="px-6 pb-10">
             <Animated.View
               style={{ opacity: fadeAnim }}
               className="flex-row items-center mb-6"
             >
               <LinearGradient
                 colors={["#10B981", "#14B8A6"]}
-                className="w-12 h-12 rounded-2xl items-center justify-center mr-4 shadow-lg"
+                className="w-14 h-14 rounded-2xl items-center justify-center mr-4"
+                style={{
+                  shadowColor: "#10B981",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 5,
+                }}
               >
-                <Icon name="receipt" size={24} color="#fff" />
+                <Icon name="calculator" size={28} color="#fff" />
               </LinearGradient>
               <Text className="text-slate-900 text-2xl font-bold">
-                Order Summary
+                Order Total
               </Text>
             </Animated.View>
 
             <LinearGradient
-              colors={["#fff", "#f8fafc"]}
-              className="rounded-3xl p-8 shadow-xl border border-slate-100"
+              colors={["#FFFFFF", "#FAFBFF"]}
+              className="rounded-3xl p-8 border border-slate-200"
+              style={{
+                shadowColor: "#8B5CF6",
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.12,
+                shadowRadius: 20,
+                elevation: 10,
+              }}
             >
-              <SummaryRow label="Subtotal" value={getSubtotal()} />
-              <SummaryRow label="VAT (15%)" value={getTax()} />
-              <SummaryRow
-                label="Delivery Fee"
-                value={getDeliveryFee()}
-                isFree={getDeliveryFee() === 0}
-              />
-              <SummaryRow label="Total" value={getTotal()} isTotal />
+              <View className="flex-row justify-between items-center py-4 border-b border-slate-200">
+                <Text className="text-slate-600 text-lg font-medium">
+                  Subtotal
+                </Text>
+                <Text className="text-slate-900 text-lg font-semibold">
+                  R{getSubtotal().toFixed(2)}
+                </Text>
+              </View>
+
+              <View className="flex-row justify-between items-center pt-6">
+                <Text className="text-slate-900 text-2xl font-bold">Total</Text>
+                <LinearGradient
+                  colors={["#8B5CF6", "#A855F7"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  className="px-6 py-3 rounded-2xl"
+                  style={{
+                    shadowColor: "#8B5CF6",
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 8,
+                    elevation: 4,
+                  }}
+                >
+                  <Text className="text-white text-3xl font-bold">
+                    R{getSubtotal().toFixed(2)}
+                  </Text>
+                </LinearGradient>
+              </View>
             </LinearGradient>
-
-            {/* Enhanced Delivery Info */}
-            {getSubtotal() < 200 && getSubtotal() > 0 && (
-              <Animated.View style={{ opacity: fadeAnim }}>
-                <LinearGradient
-                  colors={["#FEF3C7", "#FDE68A"]}
-                  className="mt-6 p-6 rounded-3xl border-2 border-yellow-200 shadow-lg"
-                >
-                  <View className="flex-row items-center">
-                    <LinearGradient
-                      colors={["#F59E0B", "#D97706"]}
-                      className="w-12 h-12 rounded-2xl items-center justify-center mr-4"
-                    >
-                      <Icon name="flash" size={24} color="#fff" />
-                    </LinearGradient>
-                    <View className="flex-1">
-                      <Text className="text-yellow-800 text-lg font-bold">
-                        Almost there!
-                      </Text>
-                      <Text className="text-yellow-700 text-sm mt-1">
-                        Add R{(200 - getSubtotal()).toFixed(2)} more for free
-                        delivery
-                      </Text>
-                      <View className="bg-yellow-300 h-2 rounded-full mt-3 overflow-hidden">
-                        <View
-                          style={{ width: `${(getSubtotal() / 200) * 100}%` }}
-                          className="h-full bg-yellow-600 rounded-full"
-                        />
-                      </View>
-                    </View>
-                  </View>
-                </LinearGradient>
-              </Animated.View>
-            )}
-
-            {getDeliveryFee() === 0 && getSubtotal() > 0 && (
-              <Animated.View style={{ opacity: fadeAnim }}>
-                <LinearGradient
-                  colors={["#ECFDF5", "#D1FAE5"]}
-                  className="mt-6 p-6 rounded-3xl border-2 border-green-200 shadow-lg"
-                >
-                  <View className="flex-row items-center">
-                    <LinearGradient
-                      colors={["#10B981", "#059669"]}
-                      className="w-12 h-12 rounded-2xl items-center justify-center mr-4"
-                    >
-                      <Icon name="checkmark-circle" size={24} color="#fff" />
-                    </LinearGradient>
-                    <View className="flex-1">
-                      <Text className="text-green-800 text-lg font-bold">
-                        Free delivery unlocked!
-                      </Text>
-                      <Text className="text-green-700 text-sm mt-1">
-                        Your order qualifies for complimentary delivery
-                      </Text>
-                    </View>
-                  </View>
-                </LinearGradient>
-              </Animated.View>
-            )}
           </View>
         </ScrollView>
       )}
 
-      {/* Enhanced Checkout Button */}
+      {/* Stunning Checkout Button */}
       {items.length > 0 && (
         <Animated.View
-          style={{ opacity: fadeAnim }}
-          className="absolute bottom-20 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-slate-200 shadow-2xl"
+          className="absolute bottom-11 left-0 right-0 bg-white border-t border-slate-200 pb-6"
+          style={[
+            { opacity: fadeAnim },
+            {
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: -4 },
+              shadowOpacity: 0.1,
+              shadowRadius: 12,
+              elevation: 20,
+            },
+          ]}
         >
           <View className="px-6 py-6">
-            <TouchableOpacity onPress={handleCheckout}>
+            <TouchableOpacity
+              onPress={handleCheckout}
+              style={{
+                shadowColor: "#10B981",
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.4,
+                shadowRadius: 12,
+                elevation: 10,
+              }}
+            >
               <LinearGradient
                 colors={["#10B981", "#059669", "#14B8A6"]}
-                className="flex-row items-center justify-center py-5 rounded-2xl shadow-xl"
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                className="flex-row items-center justify-center py-6 rounded-2xl relative overflow-hidden"
               >
                 <LinearGradient
                   colors={["rgba(255,255,255,0.3)", "transparent"]}
-                  className="absolute inset-0 rounded-2xl"
+                  className="absolute inset-0"
                 />
-                <Icon name="card" size={28} color="#fff" />
+                <Icon name="card" size={32} color="#fff" />
                 <View className="ml-4">
-                  <Text className="text-white text-xl font-bold">Checkout</Text>
-                  <Text className="text-white/90 text-sm">
-                    R{getTotal().toFixed(2)} • {getItemCount()} items
+                  <Text className="text-white text-2xl font-bold">
+                    Proceed to Checkout
+                  </Text>
+                  <Text className="text-white/95 text-base mt-0.5">
+                    R{getSubtotal().toFixed(2)} • {getItemCount()} items
                   </Text>
                 </View>
               </LinearGradient>

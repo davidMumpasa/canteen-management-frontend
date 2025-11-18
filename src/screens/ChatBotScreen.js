@@ -764,6 +764,7 @@ const ChatBotScreen = () => {
         <View
           className="bg-white border-t border-gray-200"
           style={{
+            marginBottom: 80,
             shadowColor: "#000",
             shadowOffset: { width: 0, height: -2 },
             shadowOpacity: 0.1,

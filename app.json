@@ -12,14 +12,36 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to verify your campus and show nearby pickup points.",
+          "locationWhenInUseUsageDescription": "This app needs access to your location to verify your campus and show nearby pickup points."
+        }
+      ]
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.canteenmanagementsystem",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "This app needs access to your location to verify your campus and show nearby pickup points.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to verify your campus and show nearby pickup points.",
+        "NSLocationAlwaysUsageDescription": "This app needs access to your location to verify your campus and show nearby pickup points."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "package": "com.yourcompany.canteenmanagementsystem",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ],
       "edgeToEdgeEnabled": true
     },
     "web": {

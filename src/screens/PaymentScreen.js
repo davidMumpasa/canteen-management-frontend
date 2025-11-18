@@ -1,60 +1,82 @@
-// screens/PaymentScreen.tsx
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
-  StyleSheet,
   SafeAreaView,
   StatusBar,
   TextInput,
   Alert,
   Animated,
   Modal,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import PayPalPayment from "./PayPalPayment";
-import { BASE_URL } from "../../config";
+import * as Location from "expo-location";
+import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import JWT from "expo-jwt";
-import { TOKEN_KEY } from "../../config";
-import axios from "axios";
+import { BASE_URL, TOKEN_KEY } from "../../config";
+import CampusMapView from "../components/CampusMapView";
 
 const PaymentScreen = ({ navigation, route }) => {
-  const [selectedPayment, setSelectedPayment] = useState("student");
+  // Payment states
+  const [selectedPayment, setSelectedPayment] = useState("card");
   const [cardNumber, setCardNumber] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
   const [cvv, setCvv] = useState("");
   const [cardHolder, setCardHolder] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [showPayPalModal, setShowPayPalModal] = useState(false);
-  const [cartItem, setCartItem] = useState("");
+
+  // Location & Pickup states
+  const [currentStep, setCurrentStep] = useState(1);
+  const [selectedCampus, setSelectedCampus] = useState(null);
+  const [pickupLocations, setPickupLocations] = useState([]);
+  const [selectedPickupLocation, setSelectedPickupLocation] = useState(null);
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationStatus, setLocationStatus] = useState(null);
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const [showCampusModal, setShowCampusModal] = useState(false);
+  const [showMapView, setShowMapView] = useState(false);
+  const [showPickupModal, setShowPickupModal] = useState(false);
+  const [useMapView, setUseMapView] = useState(false);
 
   const animatedValue = useRef(new Animated.Value(0)).current;
   const successAnim = useRef(new Animated.Value(0)).current;
+  const stepAnim = useRef(new Animated.Value(0)).current;
 
   const items =
     route?.params?.items ||
     (route?.params?.cartItem ? [route.params.cartItem] : []);
-
   const orderData = {
     items,
     subtotal: items.reduce((sum, item) => sum + item.totalPrice, 0),
-    tax: 2.25,
-    total: items.reduce((sum, item) => sum + item.totalPrice, 0) + 2.25,
-    orderId: "#UC2024-0158",
+    tax: 0.0,
+    total: items.reduce((sum, item) => sum + item.totalPrice, 0),
+    orderId: "#UC2024-" + Math.floor(Math.random() * 10000),
   };
+
+  const TUT_CAMPUSES = [
+    { id: 1, name: "Pretoria (Main) Campus", icon: "business" },
+    { id: 2, name: "Arcadia Campus", icon: "library" },
+    { id: 3, name: "Ga-Rankuwa Campus", icon: "school" },
+    { id: 4, name: "Soshanguve North Campus", icon: "home" },
+    { id: 5, name: "Soshanguve South Campus", icon: "home" },
+    { id: 6, name: "eMalahleni (Witbank) Campus", icon: "location" },
+    { id: 7, name: "Mbombela Campus", icon: "compass" },
+    { id: 8, name: "Polokwane Campus", icon: "map" },
+  ];
 
   const paymentMethods = [
     {
-      id: "paypal",
-      title: "PayPal",
-      subtitle: "Quick & Secure",
-      icon: "logo-paypal",
-      color: "#003087",
+      id: "cash",
+      title: "Cash on Pickup",
+      subtitle: "Pay when you collect your order",
+      icon: "cash",
+      color: "#FFC107",
       available: true,
     },
     {
@@ -63,6 +85,14 @@ const PaymentScreen = ({ navigation, route }) => {
       subtitle: "Add new card",
       icon: "card",
       color: "#2196F3",
+      available: true,
+    },
+    {
+      id: "paypal",
+      title: "PayPal",
+      subtitle: "Quick & Secure",
+      icon: "logo-paypal",
+      color: "#003087",
       available: true,
     },
     {
@@ -83,6 +113,239 @@ const PaymentScreen = ({ navigation, route }) => {
     },
   ];
 
+  useEffect(() => {
+    requestLocationPermission();
+    setUseMapView(CampusMapView !== null);
+  }, []);
+
+  const requestLocationPermission = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Denied",
+          "Location permission is required to verify your campus."
+        );
+        return;
+      }
+      getUserLocation();
+    } catch (error) {
+      console.error("Location permission error:", error);
+    }
+  };
+
+  const getUserLocation = async () => {
+    try {
+      setIsLoadingLocation(true);
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      setUserLocation({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
+      setIsLoadingLocation(false);
+    } catch (error) {
+      console.error("Error getting location:", error);
+      setIsLoadingLocation(false);
+      Alert.alert("Location Error", "Could not get your current location.");
+    }
+  };
+
+  const checkUserCampus = async (campusId) => {
+    if (!userLocation) {
+      Alert.alert("Location Required", "Please enable location services.");
+      return;
+    }
+
+    try {
+      setIsLoadingLocation(true);
+      const response = await axios.post(`${BASE_URL}/location/check`, {
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+        selectedCampusId: campusId,
+      });
+
+      setLocationStatus(response.data);
+      setIsLoadingLocation(false);
+
+      if (response.data.withinCampus) {
+        Alert.alert("✅ Location Verified", response.data.message);
+        fetchPickupLocations(TUT_CAMPUSES.find((c) => c.id === campusId).name);
+        setCurrentStep(2);
+      } else {
+        Alert.alert("⚠️ Location Notice", response.data.message, [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Continue Anyway",
+            onPress: () => {
+              fetchPickupLocations(
+                TUT_CAMPUSES.find((c) => c.id === campusId).name
+              );
+              setCurrentStep(2);
+            },
+          },
+        ]);
+      }
+    } catch (error) {
+      setIsLoadingLocation(false);
+      console.error("Campus check error:", error);
+      Alert.alert("Error", "Failed to verify campus location.");
+    }
+  };
+
+  const fetchPickupLocations = async (campusName) => {
+    try {
+      const response = await axios.get(
+        `${BASE_URL}/pickup/${encodeURIComponent(campusName)}`
+      );
+      setPickupLocations(response.data);
+    } catch (error) {
+      console.error("Fetch pickup locations error:", error);
+      Alert.alert("Error", "Failed to load pickup locations.");
+    }
+  };
+
+  const handleCampusSelection = (campus) => {
+    setSelectedCampus(campus);
+    setShowCampusModal(false);
+    checkUserCampus(campus.id);
+  };
+
+  const handlePickupSelection = (location) => {
+    setSelectedPickupLocation(location);
+    setShowMapView(false);
+    setShowPickupModal(false);
+    setCurrentStep(3);
+    Animated.spring(stepAnim, { toValue: 1, useNativeDriver: true }).start();
+  };
+
+  const getUserIdFromToken = async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return null;
+      const decoded = JWT.decode(token, TOKEN_KEY);
+      return decoded.id;
+    } catch (err) {
+      console.error("Token decode error:", err);
+      return null;
+    }
+  };
+
+  const createOrder = async (orderPayload) => {
+    try {
+      const response = await axios.post(`${BASE_URL}/orders/add`, orderPayload);
+      return response.data.success ? response.data.order : null;
+    } catch (err) {
+      console.error("Order creation error:", err);
+      return null;
+    }
+  };
+
+  const addPayment = async (paymentData) => {
+    try {
+      const userId = await getUserIdFromToken();
+      const payload = { ...paymentData, userId };
+      const response = await axios.post(`${BASE_URL}/payment/add`, payload);
+      return response.data;
+    } catch (err) {
+      console.error("Payment error:", err);
+      throw err;
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!selectedCampus || !selectedPickupLocation) {
+      Alert.alert(
+        "Missing Information",
+        "Please select campus and pickup location."
+      );
+      return;
+    }
+
+    // Only validate card details if payment method is card
+    if (
+      selectedPayment === "card" &&
+      (!cardNumber || !expiryDate || !cvv || !cardHolder)
+    ) {
+      Alert.alert("Error", "Please fill in all card details");
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      await new Promise((resolve) => {
+        Animated.timing(animatedValue, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: false,
+        }).start(() => resolve());
+      });
+
+      const userId = await getUserIdFromToken();
+      if (!userId) {
+        Alert.alert("Error", "User not authenticated");
+        setIsProcessing(false);
+        return;
+      }
+
+      const orderPayload = {
+        userId,
+        totalAmount: orderData.total,
+        paymentMethod: selectedPayment,
+        orderType: "pickup",
+        campus: selectedCampus.name,
+        deliveryAddress: selectedPickupLocation.name,
+        specialInstructions: `Campus: ${selectedCampus.name}, Pickup: ${selectedPickupLocation.name}`,
+        items: orderData.items.map((item) => ({
+          productId: item.id,
+          quantity: item.quantity,
+          specialRequests: item.specialRequests || "",
+        })),
+      };
+
+      const newOrder = await createOrder(orderPayload);
+
+      if (newOrder) {
+        const paymentData = {
+          orderId: newOrder.id,
+          amount: orderData.total,
+          paymentMethod: selectedPayment,
+          type: "payment",
+          description:
+            selectedPayment === "cash"
+              ? "Cash payment - to be collected on pickup"
+              : "Payment for order",
+          metadata: {
+            campus: selectedCampus.name,
+            pickup: selectedPickupLocation.name,
+          },
+        };
+        await addPayment(paymentData);
+
+        setIsProcessing(false);
+        setShowSuccess(true);
+        Animated.spring(successAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+        }).start();
+
+        setTimeout(() => {
+          setShowSuccess(false);
+          navigation.navigate("Orders", {
+            screen: "OrdersMain",
+          });
+        }, 2000);
+      } else {
+        setIsProcessing(false);
+      }
+    } catch (err) {
+      setIsProcessing(false);
+      console.error("Payment error:", err);
+      Alert.alert("Error", "Something went wrong during payment.");
+    }
+  };
+
   const formatCardNumber = (text) => {
     const cleaned = text.replace(/\s/g, "");
     const match = cleaned.match(/\d{1,4}/g);
@@ -95,788 +358,612 @@ const PaymentScreen = ({ navigation, route }) => {
     return cleaned.slice(0, 2) + "/" + cleaned.slice(2, 4);
   };
 
-  const createOrder = async (orderData) => {
-    try {
-      const response = await axios.post(`${BASE_URL}/orders/add`, orderData);
-
-      if (response.data.success) {
-        console.log("✅ Order created:", response.data.order);
-        return response.data.order;
-      } else {
-        Alert.alert("Order Error", "Failed to create order");
-        return null;
-      }
-    } catch (err) {
-      console.error("❌ API Error:", err.response?.data || err.message);
-      Alert.alert("Order Error", "Something went wrong while creating order");
-      return null;
+  // Get button text and icon based on payment method
+  const getButtonConfig = () => {
+    if (selectedPayment === "cash") {
+      return {
+        text: "Place Order",
+        icon: "receipt-outline",
+        colors: ["#FFC107", "#FF9800"],
+      };
     }
+    return {
+      text: `Complete Payment R${orderData.total.toFixed(2)}`,
+      icon: "card",
+      colors: ["#22c55e", "#16a34a"],
+    };
   };
 
-  // Method: Add payment
-  const addPayment = async (paymentData) => {
-    try {
-      const userId = await getUserIdFromToken();
-
-      // Append userId to the payment data
-      const payload = { ...paymentData, userId };
-
-      const response = await axios.post(`${BASE_URL}/payment/add`, payload);
-
-      console.log("✅ Payment added:", response.data);
-      return response.data;
-    } catch (err) {
-      console.error(
-        "❌ Error adding payment:",
-        err.response?.data || err.message
-      );
-      throw err;
-    }
-  };
-
-  const getUserIdFromToken = async () => {
-    try {
-      const token = await AsyncStorage.getItem("token");
-      console.log("=====================");
-      console.log("Token: ", token);
-      console.log("=====================");
-      if (!token) {
-        console.error("❌ No token found");
-        return null;
-      }
-
-      const decoded = JWT.decode(token, TOKEN_KEY);
-      console.log("🔑 Decoded token:", decoded);
-
-      return decoded.id;
-    } catch (err) {
-      console.error("❌ Error decoding token:", err);
-      return null;
-    }
-  };
-
-  const handlePayment = async () => {
-    if (selectedPayment === "card") {
-      if (!cardNumber || !expiryDate || !cvv || !cardHolder) {
-        Alert.alert("Error", "Please fill in all card details");
-        return;
-      }
-
-      try {
-        setIsProcessing(true);
-
-        // Simulate payment animation
-        await new Promise((resolve) => {
-          Animated.timing(animatedValue, {
-            toValue: 1,
-            duration: 2000,
-            useNativeDriver: false,
-          }).start(() => resolve());
-        });
-        const userId = await getUserIdFromToken();
-        if (!userId) {
-          Alert.alert("Error", "User not authenticated");
-          return;
-        }
-        // 🔹 Prepare order payload
-        const orderPayload = {
-          userId,
-          totalAmount: orderData.total,
-          paymentMethod: "card",
-          orderType: "delivery",
-          deliveryAddress: "123 Main Street",
-          specialInstructions: "Leave at the door",
-          items: orderData.items.map((item) => ({
-            productId: item.id,
-            quantity: item.quantity,
-            specialRequests: item.specialRequests || "",
-          })),
-        };
-
-        // 🔹 Call API
-
-        const newOrder = await createOrder(orderPayload);
-
-        const orderItems = orderData.items.map((item) => ({
-          productId: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          size: item.selectedSize,
-          totalPrice: item.totalPrice,
-        }));
-
-        const totalAmount = orderItems.reduce(
-          (acc, item) => acc + item.totalPrice,
-          0
-        );
-
-        const paymentData = {
-          orderId: newOrder.id,
-          amount: totalAmount,
-          paymentMethod: "card",
-          type: "payment",
-          description: "Payment for cart order",
-          metadata: { cart: orderItems },
-        };
-        const result = await addPayment(paymentData);
-
-        if (newOrder) {
-          setIsProcessing(false);
-          setShowSuccess(true);
-
-          // Success animation
-          Animated.spring(successAnim, {
-            toValue: 1,
-            useNativeDriver: true,
-          }).start();
-
-          setTimeout(() => {
-            setShowSuccess(false);
-            // Pass the orderId to the OrderScreen
-            navigation.navigate("Main", {
-              screen: "Orders",
-              params: { orderId: newOrder.id },
-            });
-          }, 2000);
-        } else {
-          setIsProcessing(false);
-        }
-      } catch (err) {
-        setIsProcessing(false);
-        console.error("❌ Payment error:", err);
-        Alert.alert("Error", "Something went wrong during payment.");
-      }
-    } else if (selectedPayment === "paypal") {
-      setShowPayPalModal(true);
-    } else {
-      Alert.alert(
-        "Payment method not available",
-        "Please select a valid payment method."
-      );
-    }
-  };
-
-  const renderPaymentMethod = (method) => (
-    <TouchableOpacity
-      key={method.id}
-      style={[
-        styles.paymentMethod,
-        selectedPayment === method.id && styles.paymentMethodSelected,
-        !method.available && styles.paymentMethodDisabled,
-      ]}
-      onPress={() => method.available && setSelectedPayment(method.id)}
-      disabled={!method.available}
-    >
-      <View style={styles.paymentMethodContent}>
-        <View style={[styles.paymentIcon, { backgroundColor: method.color }]}>
-          <Ionicons name={method.icon} size={24} color="white" />
-        </View>
-        <View style={styles.paymentInfo}>
-          <Text
-            style={[
-              styles.paymentTitle,
-              !method.available && styles.disabledText,
-            ]}
+  const renderStepIndicator = () => (
+    <View className="flex-row justify-between items-center px-6 py-4 bg-white">
+      {[1, 2, 3].map((step) => (
+        <View key={step} className="flex-1 items-center relative">
+          <View
+            className={`w-10 h-10 rounded-full items-center justify-center ${
+              currentStep >= step ? "bg-purple-600" : "bg-gray-300"
+            }`}
           >
-            {method.title}
-          </Text>
+            <Text className="text-white font-bold">{step}</Text>
+          </View>
           <Text
-            style={[
-              styles.paymentSubtitle,
-              !method.available && styles.disabledText,
-            ]}
+            className={`text-xs mt-2 ${
+              currentStep >= step
+                ? "text-purple-600 font-semibold"
+                : "text-gray-400"
+            }`}
           >
-            {method.subtitle}
+            {step === 1 ? "Campus" : step === 2 ? "Pickup" : "Payment"}
           </Text>
+          {step < 3 && (
+            <View
+              className={`absolute top-5 left-1/2 w-full h-0.5 ${
+                currentStep > step ? "bg-purple-600" : "bg-gray-300"
+              }`}
+            />
+          )}
         </View>
-        {!method.available && (
-          <View style={styles.comingSoonBadge}>
-            <Text style={styles.comingSoonText}>Soon</Text>
+      ))}
+    </View>
+  );
+
+  const renderCampusSelection = () => (
+    <View className="px-6 py-4">
+      <Text className="text-2xl font-bold text-gray-900 mb-2">
+        📍 Select Your Campus
+      </Text>
+      <Text className="text-base text-gray-600 mb-6">
+        Choose where you'll pick up your order
+      </Text>
+
+      <TouchableOpacity
+        onPress={() => setShowCampusModal(true)}
+        className="bg-white rounded-2xl p-6 shadow-lg border-2 border-gray-200"
+      >
+        {selectedCampus ? (
+          <View className="flex-row items-center">
+            <View className="w-14 h-14 rounded-full bg-purple-100 items-center justify-center mr-4">
+              <Ionicons name={selectedCampus.icon} size={28} color="#7c3aed" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-lg font-bold text-gray-900">
+                {selectedCampus.name}
+              </Text>
+              {locationStatus && (
+                <Text
+                  className={`text-sm mt-1 ${
+                    locationStatus.withinCampus
+                      ? "text-green-600"
+                      : "text-orange-600"
+                  }`}
+                >
+                  {locationStatus.withinCampus
+                    ? "✓ You are at this campus"
+                    : `${Math.round(locationStatus.distance)}m away`}
+                </Text>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+          </View>
+        ) : (
+          <View className="items-center py-4">
+            <Ionicons name="location-outline" size={48} color="#d1d5db" />
+            <Text className="text-gray-400 mt-2">Tap to select campus</Text>
           </View>
         )}
-      </View>
-      {selectedPayment === method.id && (
-        <View style={styles.selectedIndicator}>
-          <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+      </TouchableOpacity>
+
+      {isLoadingLocation && (
+        <View className="mt-4 items-center">
+          <ActivityIndicator size="large" color="#7c3aed" />
+          <Text className="text-gray-600 mt-2">Verifying location...</Text>
         </View>
       )}
-    </TouchableOpacity>
+    </View>
   );
 
-  const renderCardForm = () => {
-    if (selectedPayment !== "card") return null;
+  const renderPickupSelection = () => (
+    <View className="px-6 py-4">
+      <Text className="text-2xl font-bold text-gray-900 mb-2">
+        📦 Select Pickup Point
+      </Text>
+      <Text className="text-base text-gray-600 mb-6">
+        Where should we prepare your order?
+      </Text>
 
-    return (
-      <View style={styles.cardForm}>
-        <Text style={styles.sectionTitle}>💳 Card Details</Text>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Card Number</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="1234 5678 9012 3456"
-            value={cardNumber}
-            onChangeText={(text) => setCardNumber(formatCardNumber(text))}
-            keyboardType="numeric"
-            maxLength={19}
-          />
-        </View>
-
-        <View style={styles.rowInputs}>
-          <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
-            <Text style={styles.inputLabel}>Expiry Date</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder="MM/YY"
-              value={expiryDate}
-              onChangeText={(text) => setExpiryDate(formatExpiryDate(text))}
-              keyboardType="numeric"
-              maxLength={5}
-            />
-          </View>
-          <View style={[styles.inputGroup, { flex: 1, marginLeft: 10 }]}>
-            <Text style={styles.inputLabel}>CVV</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder="123"
-              value={cvv}
-              onChangeText={setCvv}
-              keyboardType="numeric"
-              maxLength={4}
-              secureTextEntry
-            />
-          </View>
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Cardholder Name</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="John Doe"
-            value={cardHolder}
-            onChangeText={setCardHolder}
-            autoCapitalize="words"
-          />
-        </View>
-      </View>
-    );
-  };
-
-  const renderSuccessModal = () => (
-    <Modal visible={showSuccess} transparent animationType="fade">
-      <View style={styles.modalOverlay}>
-        <Animated.View
-          style={[
-            styles.successModal,
-            {
-              transform: [
-                {
-                  scale: successAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.5, 1],
-                  }),
-                },
-              ],
-              opacity: successAnim,
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={["#4CAF50", "#45a049"]}
-            style={styles.successContent}
-          >
-            <View style={styles.successIcon}>
-              <Ionicons name="checkmark-circle" size={80} color="white" />
+      <TouchableOpacity
+        onPress={() => {
+          if (useMapView) {
+            setShowMapView(true);
+          } else {
+            setShowPickupModal(true);
+          }
+        }}
+        className="bg-white rounded-2xl p-6 shadow-lg border-2 border-gray-200"
+      >
+        {selectedPickupLocation ? (
+          <View className="flex-row items-center">
+            <View className="w-14 h-14 rounded-full bg-indigo-100 items-center justify-center mr-4">
+              <Ionicons name="location" size={28} color="#4f46e5" />
             </View>
-            <Text style={styles.successTitle}>Payment Successful! 🎉</Text>
-            <Text style={styles.successMessage}>
-              Your order {orderData.orderId} has been confirmed
-            </Text>
-            <View style={styles.successDetails}>
-              <Text style={styles.successAmount}>R{orderData.total}</Text>
-              <Text style={styles.successTime}>
-                Estimated pickup: 15-20 minutes
+            <View className="flex-1">
+              <Text className="text-lg font-bold text-gray-900">
+                {selectedPickupLocation.name}
+              </Text>
+              <Text className="text-sm text-gray-600 mt-1">
+                {selectedCampus.name}
               </Text>
             </View>
-          </LinearGradient>
-        </Animated.View>
-      </View>
-    </Modal>
+            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+          </View>
+        ) : (
+          <View className="items-center py-4">
+            <Ionicons name="pin-outline" size={48} color="#d1d5db" />
+            <Text className="text-gray-400 mt-2">
+              {useMapView ? "Tap to view map" : "Tap to select pickup location"}
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => setCurrentStep(3)}
+        disabled={!selectedPickupLocation}
+        className={`mt-6 rounded-2xl overflow-hidden ${
+          !selectedPickupLocation ? "opacity-50" : ""
+        }`}
+      >
+        <LinearGradient
+          colors={["#4f46e5", "#7c3aed"]}
+          className="py-4 items-center"
+        >
+          <Text className="text-white text-lg font-bold">
+            Continue to Payment →
+          </Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
   );
 
-  const renderPayPalModal = () => {
-    if (!showPayPalModal) return null;
+  const renderPaymentSection = () => {
+    const buttonConfig = getButtonConfig();
 
     return (
-      <PayPalPayment
-        amount={orderData.total.toFixed(2)}
-        orderID={orderData.orderId}
-        clientId={"YOUR_PAYPAL_CLIENT_ID"}
-        currency="USD"
-        onSuccess={(data) => {
-          setShowPayPalModal(false);
-          Alert.alert(
-            "Payment Successful",
-            `Transaction ID: R{data.transactionId}`
-          );
-
-          navigation.navigate("Main", { screen: "Orders" });
-        }}
-        onCancel={() => {
-          setShowPayPalModal(false);
-          Alert.alert("Payment Cancelled", "You cancelled the PayPal payment.");
-        }}
-        onError={(error) => {
-          setShowPayPalModal(false);
-          Alert.alert(
-            "Payment Error",
-            error.message || "An error occurred during PayPal payment."
-          );
-        }}
-      />
-    );
-  };
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#667eea" />
-
-      {/* Header */}
-      <LinearGradient colors={["#667eea", "#764ba2"]} style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="white" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>💳 Payment</Text>
-        <View style={styles.headerAmount}>
-          <Text style={styles.headerAmountText}>R{orderData.total}</Text>
-        </View>
-      </LinearGradient>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView className="flex-1 px-6" showsVerticalScrollIndicator={false}>
         {/* Order Summary */}
-        <View style={styles.orderSummary}>
-          <Text style={styles.sectionTitle}>📋 Order Summary</Text>
+        <View className="bg-white rounded-2xl p-6 mt-4 shadow-md">
+          <Text className="text-xl font-bold text-gray-900 mb-4">
+            📋 Order Summary
+          </Text>
           {orderData.items.map((item, index) => (
-            <View key={index} style={styles.orderItem}>
-              <Text style={styles.orderItemName}>
+            <View key={index} className="flex-row justify-between mb-3">
+              <Text className="text-base text-gray-700 flex-1">
                 {item.quantity}x {item.name}
               </Text>
-              <Text style={styles.orderItemPrice}>
+              <Text className="text-base font-semibold text-gray-900">
                 R{(item.price * item.quantity).toFixed(2)}
               </Text>
             </View>
           ))}
-          <View style={styles.orderDivider} />
-          <View style={styles.orderItem}>
-            <Text style={styles.orderItemName}>Subtotal</Text>
-            <Text style={styles.orderItemPrice}>R{orderData.subtotal}</Text>
+          <View className="h-px bg-gray-200 my-4" />
+          <View className="flex-row justify-between mb-3">
+            <Text className="text-base text-gray-600">Subtotal</Text>
+            <Text className="text-base font-semibold text-gray-900">
+              R{orderData.subtotal.toFixed(2)}
+            </Text>
           </View>
-          <View style={styles.orderItem}>
-            <Text style={styles.orderItemName}>Tax</Text>
-            <Text style={styles.orderItemPrice}>R{orderData.tax}</Text>
+          <View className="flex-row justify-between mb-3">
+            <Text className="text-base text-gray-600">Tax</Text>
+            <Text className="text-base font-semibold text-gray-900">
+              R{orderData.tax.toFixed(2)}
+            </Text>
           </View>
-          <View style={styles.orderTotal}>
-            <Text style={styles.orderTotalLabel}>Total</Text>
-            <Text style={styles.orderTotalAmount}>R{orderData.total}</Text>
+          <View className="flex-row justify-between pt-4 border-t-2 border-purple-600 mt-2">
+            <Text className="text-lg font-bold text-gray-900">Total</Text>
+            <Text className="text-2xl font-bold text-purple-600">
+              R{orderData.total.toFixed(2)}
+            </Text>
           </View>
         </View>
 
         {/* Payment Methods */}
-        <View style={styles.paymentSection}>
-          <Text style={styles.sectionTitle}>💰 Choose Payment Method</Text>
-          {paymentMethods.map(renderPaymentMethod)}
+        <View className="mt-6">
+          <Text className="text-xl font-bold text-gray-900 mb-4">
+            💳 Payment Method
+          </Text>
+          {paymentMethods.map((method) => (
+            <TouchableOpacity
+              key={method.id}
+              onPress={() => method.available && setSelectedPayment(method.id)}
+              disabled={!method.available}
+              className={`bg-white rounded-2xl p-5 mb-3 flex-row items-center justify-between shadow-sm border-2 ${
+                selectedPayment === method.id
+                  ? "border-green-500 bg-green-50"
+                  : "border-gray-200"
+              } ${!method.available ? "opacity-60" : ""}`}
+            >
+              <View className="flex-row items-center flex-1">
+                <View
+                  style={{ backgroundColor: method.color }}
+                  className="w-12 h-12 rounded-full items-center justify-center mr-4"
+                >
+                  <Ionicons name={method.icon} size={24} color="white" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-base font-bold text-gray-900 mb-1">
+                    {method.title}
+                  </Text>
+                  <Text className="text-sm text-gray-600">
+                    {method.subtitle}
+                  </Text>
+                </View>
+                {!method.available && (
+                  <View className="bg-orange-500 px-3 py-1 rounded-xl">
+                    <Text className="text-white text-xs font-bold">Soon</Text>
+                  </View>
+                )}
+              </View>
+              {selectedPayment === method.id && (
+                <Ionicons name="checkmark-circle" size={28} color="#22c55e" />
+              )}
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* Card Form */}
-        {renderCardForm()}
-        {renderPayPalModal()}
+        {/* Cash Payment Info */}
+        {selectedPayment === "cash" && (
+          <View className="bg-amber-50 rounded-2xl p-6 mt-4 border-2 border-amber-200">
+            <View className="flex-row items-start">
+              <View className="bg-amber-100 rounded-full p-3 mr-4">
+                <Ionicons name="cash" size={24} color="#F59E0B" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-lg font-bold text-gray-900 mb-2">
+                  Cash Payment Instructions
+                </Text>
+                <Text className="text-sm text-gray-700 mb-2">
+                  • Prepare exact amount: R{orderData.total.toFixed(2)}
+                </Text>
+                <Text className="text-sm text-gray-700 mb-2">
+                  • Pay when collecting your order
+                </Text>
+                <Text className="text-sm text-gray-700 mb-2">
+                  • Have your order ID ready: {orderData.orderId}
+                </Text>
+                <Text className="text-sm text-gray-700">
+                  • Payment must be made before receiving your order
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
 
-        {/* Pickup Information */}
-        <View style={styles.pickupInfo}>
-          <Text style={styles.sectionTitle}>📍 Pickup Information</Text>
-          <View style={styles.infoCard}>
-            <View style={styles.infoRow}>
-              <Ionicons name="location" size={20} color="#667eea" />
-              <Text style={styles.infoText}>Main Campus Canteen</Text>
+        {/* Card Form */}
+        {selectedPayment === "card" && (
+          <View className="bg-white rounded-2xl p-6 mt-4 shadow-md">
+            <Text className="text-xl font-bold text-gray-900 mb-4">
+              💳 Card Details
+            </Text>
+
+            <View className="mb-5">
+              <Text className="text-sm font-semibold text-gray-700 mb-2">
+                Card Number
+              </Text>
+              <TextInput
+                className="bg-gray-50 border border-gray-300 rounded-xl p-4 text-base"
+                placeholder="1234 5678 9012 3456"
+                value={cardNumber}
+                onChangeText={(text) => setCardNumber(formatCardNumber(text))}
+                keyboardType="numeric"
+                maxLength={19}
+              />
             </View>
-            <View style={styles.infoRow}>
-              <Ionicons name="time" size={20} color="#667eea" />
-              <Text style={styles.infoText}>Estimated: 15-20 minutes</Text>
+
+            <View className="flex-row justify-between mb-5">
+              <View className="flex-1 mr-2">
+                <Text className="text-sm font-semibold text-gray-700 mb-2">
+                  Expiry Date
+                </Text>
+                <TextInput
+                  className="bg-gray-50 border border-gray-300 rounded-xl p-4 text-base"
+                  placeholder="MM/YY"
+                  value={expiryDate}
+                  onChangeText={(text) => setExpiryDate(formatExpiryDate(text))}
+                  keyboardType="numeric"
+                  maxLength={5}
+                />
+              </View>
+              <View className="flex-1 ml-2">
+                <Text className="text-sm font-semibold text-gray-700 mb-2">
+                  CVV
+                </Text>
+                <TextInput
+                  className="bg-gray-50 border border-gray-300 rounded-xl p-4 text-base"
+                  placeholder="123"
+                  value={cvv}
+                  onChangeText={setCvv}
+                  keyboardType="numeric"
+                  maxLength={4}
+                  secureTextEntry
+                />
+              </View>
             </View>
-            <View style={styles.infoRow}>
-              <Ionicons name="receipt" size={20} color="#667eea" />
-              <Text style={styles.infoText}>Order: {orderData.orderId}</Text>
+
+            <View className="mb-5">
+              <Text className="text-sm font-semibold text-gray-700 mb-2">
+                Cardholder Name
+              </Text>
+              <TextInput
+                className="bg-gray-50 border border-gray-300 rounded-xl p-4 text-base"
+                placeholder="John Doe"
+                value={cardHolder}
+                onChangeText={setCardHolder}
+                autoCapitalize="words"
+              />
             </View>
+          </View>
+        )}
+
+        {/* Pickup Info Summary */}
+        <View className="bg-purple-50 rounded-2xl p-6 mt-4 mb-4">
+          <Text className="text-lg font-bold text-gray-900 mb-4">
+            📍 Pickup Details
+          </Text>
+          <View className="flex-row items-center mb-3">
+            <Ionicons name="location" size={20} color="#7c3aed" />
+            <Text className="ml-3 text-base text-gray-700">
+              {selectedCampus?.name}
+            </Text>
+          </View>
+          <View className="flex-row items-center mb-3">
+            <Ionicons name="pin" size={20} color="#7c3aed" />
+            <Text className="ml-3 text-base text-gray-700">
+              {selectedPickupLocation?.name}
+            </Text>
+          </View>
+          <View className="flex-row items-center">
+            <Ionicons name="time" size={20} color="#7c3aed" />
+            <Text className="ml-3 text-base text-gray-700">
+              Ready in 15-20 minutes
+            </Text>
           </View>
         </View>
 
-        {/* Payment Button */}
+        {/* Payment/Order Button */}
         <TouchableOpacity
-          style={[styles.payButton, isProcessing && styles.payButtonDisabled]}
           onPress={handlePayment}
           disabled={isProcessing}
+          className={`rounded-2xl overflow-hidden mb-4 ${
+            isProcessing ? "opacity-70" : ""
+          }`}
         >
           <LinearGradient
-            colors={isProcessing ? ["#ccc", "#999"] : ["#4CAF50", "#45a049"]}
-            style={styles.payButtonGradient}
+            colors={isProcessing ? ["#9ca3af", "#6b7280"] : buttonConfig.colors}
+            className="py-5 items-center flex-row justify-center"
           >
             {isProcessing ? (
-              <View style={styles.processingContainer}>
-                <Animated.View
-                  style={[
-                    styles.processingSpinner,
-                    {
-                      transform: [
-                        {
-                          rotate: animatedValue.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ["0deg", "360deg"],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
-                >
-                  <Ionicons name="sync" size={24} color="white" />
-                </Animated.View>
-                <Text style={styles.payButtonText}>Processing Payment...</Text>
-              </View>
+              <>
+                <ActivityIndicator color="white" size="small" />
+                <Text className="text-white text-lg font-bold ml-3">
+                  Processing...
+                </Text>
+              </>
             ) : (
               <>
-                <Ionicons name="card" size={24} color="white" />
-                <Text style={styles.payButtonText}>
-                  Complete Payment R{orderData.total}
+                <Ionicons name={buttonConfig.icon} size={24} color="white" />
+                <Text className="text-white text-lg font-bold ml-3">
+                  {buttonConfig.text}
                 </Text>
               </>
             )}
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Security Notice */}
-        <View style={styles.securityNotice}>
-          <Ionicons name="shield-checkmark" size={16} color="#4CAF50" />
-          <Text style={styles.securityText}>
-            Your payment is secure and encrypted
+        <View className="flex-row items-center justify-center mb-8">
+          <Ionicons name="shield-checkmark" size={16} color="#22c55e" />
+          <Text className="text-gray-600 text-sm ml-2">
+            {selectedPayment === "cash"
+              ? "Order Confirmed - Pay on Pickup"
+              : "Secure & Encrypted Payment"}
           </Text>
         </View>
       </ScrollView>
+    );
+  };
 
-      {renderSuccessModal()}
+  return (
+    <SafeAreaView className="flex-1 bg-gray-50">
+      <StatusBar barStyle="light-content" backgroundColor="#667eea" />
+
+      {/* Header */}
+      <LinearGradient
+        colors={["#667eea", "#764ba2"]}
+        className="px-6 py-4 pt-8"
+      >
+        <View className="flex-row items-center justify-between">
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            className="w-10 h-10 rounded-full bg-white/20 items-center justify-center"
+          >
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
+          <Text className="text-white text-xl font-bold flex-1 text-center">
+            Checkout
+          </Text>
+          <View className="bg-white/20 px-4 py-2 rounded-full">
+            <Text className="text-white font-bold">
+              R{orderData.total.toFixed(2)}
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
+
+      {renderStepIndicator()}
+
+      {currentStep === 1 && renderCampusSelection()}
+      {currentStep === 2 && renderPickupSelection()}
+      {currentStep === 3 && renderPaymentSection()}
+
+      {/* Campus Selection Modal */}
+      <Modal visible={showCampusModal} animationType="slide" transparent>
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="bg-white rounded-t-3xl p-6 max-h-[80%]">
+            <View className="flex-row items-center justify-between mb-6">
+              <Text className="text-2xl font-bold text-gray-900">
+                Select Campus
+              </Text>
+              <TouchableOpacity onPress={() => setShowCampusModal(false)}>
+                <Ionicons name="close-circle" size={32} color="#9ca3af" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {TUT_CAMPUSES.map((campus) => (
+                <TouchableOpacity
+                  key={campus.id}
+                  onPress={() => handleCampusSelection(campus)}
+                  className="bg-gray-50 rounded-2xl p-5 mb-3 flex-row items-center border-2 border-gray-200"
+                >
+                  <View className="w-12 h-12 rounded-full bg-purple-100 items-center justify-center mr-4">
+                    <Ionicons name={campus.icon} size={24} color="#7c3aed" />
+                  </View>
+                  <Text className="flex-1 text-base font-semibold text-gray-900">
+                    {campus.name}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Map View Modal for Pickup Selection */}
+      {useMapView && CampusMapView && (
+        <Modal visible={showMapView} animationType="slide">
+          <SafeAreaView className="flex-1 bg-white">
+            <View className="flex-row items-center justify-between px-6 py-4 bg-purple-600">
+              <TouchableOpacity onPress={() => setShowMapView(false)}>
+                <Ionicons name="arrow-back" size={24} color="white" />
+              </TouchableOpacity>
+              <Text className="text-white text-lg font-bold">
+                Select Pickup Location
+              </Text>
+              <View className="w-6" />
+            </View>
+            <CampusMapView
+              selectedCampus={selectedCampus}
+              pickupLocations={pickupLocations}
+              onLocationSelect={handlePickupSelection}
+            />
+          </SafeAreaView>
+        </Modal>
+      )}
+
+      {/* Pickup Location List Modal (Fallback) */}
+      <Modal visible={showPickupModal} animationType="slide" transparent>
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="bg-white rounded-t-3xl p-6 max-h-[80%]">
+            <View className="flex-row items-center justify-between mb-6">
+              <Text className="text-2xl font-bold text-gray-900">
+                Pickup Locations
+              </Text>
+              <TouchableOpacity onPress={() => setShowPickupModal(false)}>
+                <Ionicons name="close-circle" size={32} color="#9ca3af" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {pickupLocations.map((location) => (
+                <TouchableOpacity
+                  key={location.id}
+                  onPress={() => handlePickupSelection(location)}
+                  className="bg-gray-50 rounded-2xl p-5 mb-3 flex-row items-center border-2 border-gray-200"
+                >
+                  <View className="w-12 h-12 rounded-full bg-indigo-100 items-center justify-center mr-4">
+                    <Ionicons name="location" size={24} color="#4f46e5" />
+                  </View>
+                  <Text className="flex-1 text-base font-semibold text-gray-900">
+                    {location.name}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Success Modal */}
+      <Modal visible={showSuccess} transparent animationType="fade">
+        <View className="flex-1 bg-black/70 justify-center items-center px-6">
+          <Animated.View
+            style={{
+              transform: [{ scale: successAnim }],
+              opacity: successAnim,
+            }}
+            className="w-full"
+          >
+            <View className="bg-white rounded-3xl p-8 items-center">
+              <LinearGradient
+                colors={["#22c55e", "#16a34a"]}
+                className="w-24 h-24 rounded-full items-center justify-center mb-6"
+              >
+                <Ionicons name="checkmark-circle" size={64} color="white" />
+              </LinearGradient>
+
+              <Text className="text-3xl font-bold text-gray-900 text-center mb-2">
+                {selectedPayment === "cash"
+                  ? "Order Placed! 🎉"
+                  : "Payment Successful! 🎉"}
+              </Text>
+              <Text className="text-base text-gray-600 text-center mb-6">
+                Your order {orderData.orderId} has been confirmed
+              </Text>
+
+              <View className="w-full bg-purple-50 rounded-2xl p-6 mb-6">
+                <View className="items-center mb-4">
+                  <Text className="text-4xl font-bold text-purple-600">
+                    R{orderData.total.toFixed(2)}
+                  </Text>
+                  {selectedPayment === "cash" && (
+                    <Text className="text-sm text-orange-600 font-semibold mt-2">
+                      💰 Pay with cash on pickup
+                    </Text>
+                  )}
+                </View>
+
+                <View className="mt-2">
+                  <View className="flex-row items-center mb-3">
+                    <Ionicons name="location" size={18} color="#7c3aed" />
+                    <Text className="ml-3 text-base text-gray-700">
+                      {selectedCampus?.name}
+                    </Text>
+                  </View>
+                  <View className="flex-row items-center mb-3">
+                    <Ionicons name="pin" size={18} color="#7c3aed" />
+                    <Text className="ml-3 text-base text-gray-700">
+                      {selectedPickupLocation?.name}
+                    </Text>
+                  </View>
+                  <View className="flex-row items-center">
+                    <Ionicons name="time" size={18} color="#7c3aed" />
+                    <Text className="ml-3 text-base text-gray-700 font-semibold">
+                      Ready in 15-20 minutes
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              <View className="flex-row items-center">
+                <Ionicons name="information-circle" size={16} color="#6b7280" />
+                <Text className="text-gray-600 text-sm ml-2">
+                  Redirecting to orders...
+                </Text>
+              </View>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 export default PaymentScreen;
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    paddingTop: 25,
-  },
-  backButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.2)",
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "white",
-    flex: 1,
-    textAlign: "center",
-  },
-  headerAmount: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-  },
-  headerAmountText: {
-    color: "white",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 15,
-    marginTop: 20,
-  },
-  orderSummary: {
-    backgroundColor: "white",
-    borderRadius: 15,
-    padding: 20,
-    marginTop: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  orderItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  orderItemName: {
-    fontSize: 16,
-    color: "#333",
-    flex: 1,
-  },
-  orderItemPrice: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-  },
-  orderDivider: {
-    height: 1,
-    backgroundColor: "#e0e0e0",
-    marginVertical: 15,
-  },
-  orderTotal: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingTop: 15,
-    borderTopWidth: 2,
-    borderTopColor: "#667eea",
-  },
-  orderTotalLabel: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  orderTotalAmount: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#667eea",
-  },
-  paymentSection: {
-    marginTop: 10,
-  },
-  paymentMethod: {
-    backgroundColor: "white",
-    borderRadius: 15,
-    padding: 18,
-    marginBottom: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  paymentMethodSelected: {
-    borderColor: "#4CAF50",
-    backgroundColor: "#f8fff8",
-  },
-  paymentMethodDisabled: {
-    opacity: 0.6,
-  },
-  paymentMethodContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  paymentIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 15,
-  },
-  paymentInfo: {
-    flex: 1,
-  },
-  paymentTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 4,
-  },
-  paymentSubtitle: {
-    fontSize: 14,
-    color: "#666",
-  },
-  disabledText: {
-    color: "#999",
-  },
-  selectedIndicator: {
-    marginLeft: 10,
-  },
-  comingSoonBadge: {
-    backgroundColor: "#FF9800",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  comingSoonText: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  cardForm: {
-    backgroundColor: "white",
-    borderRadius: 15,
-    padding: 20,
-    marginTop: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 8,
-  },
-  textInput: {
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-    borderRadius: 10,
-    padding: 15,
-    fontSize: 16,
-    backgroundColor: "#f8f9fa",
-  },
-  rowInputs: {
-    flexDirection: "row",
-  },
-  pickupInfo: {
-    backgroundColor: "white",
-    borderRadius: 15,
-    padding: 20,
-    marginTop: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  infoCard: {
-    backgroundColor: "#f8f9ff",
-    borderRadius: 12,
-    padding: 15,
-  },
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  infoText: {
-    marginLeft: 12,
-    fontSize: 16,
-    color: "#333",
-    fontWeight: "500",
-  },
-  payButton: {
-    marginTop: 30,
-    marginBottom: 20,
-    borderRadius: 15,
-    overflow: "hidden",
-  },
-  payButtonDisabled: {
-    opacity: 0.8,
-  },
-  payButtonGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-  },
-  payButtonText: {
-    color: "white",
-    fontSize: 18,
-    fontWeight: "bold",
-    marginLeft: 10,
-  },
-  processingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  processingSpinner: {
-    marginRight: 10,
-  },
-  securityNotice: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 30,
-  },
-  securityText: {
-    marginLeft: 8,
-    fontSize: 14,
-    color: "#666",
-    fontStyle: "italic",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  successModal: {
-    width: "85%",
-    borderRadius: 20,
-    overflow: "hidden",
-  },
-  successContent: {
-    padding: 30,
-    alignItems: "center",
-  },
-  successIcon: {
-    marginBottom: 20,
-  },
-  successTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "white",
-    textAlign: "center",
-    marginBottom: 10,
-  },
-  successMessage: {
-    fontSize: 16,
-    color: "rgba(255,255,255,0.9)",
-    textAlign: "center",
-    marginBottom: 20,
-  },
-  successDetails: {
-    alignItems: "center",
-  },
-  successAmount: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "white",
-    marginBottom: 8,
-  },
-  successTime: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.8)",
-  },
-});

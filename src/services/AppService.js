@@ -18,7 +18,7 @@ class AppService {
       const payloadBase64 = token.split(".")[1];
       const payload = JSON.parse(base64.decode(payloadBase64));
 
-      console.log("Decoded payload:", payload);
+      // console.log("Decoded payload:", payload);
       return payload;
     } catch (err) {
       console.error("❌ Manual decode failed:", err);

@@ -51,7 +51,11 @@ export default function CustomBottomNav({ state, descriptors, navigation }) {
       {/* Floating Chat Button */}
       <TouchableOpacity
         style={styles.chatButton}
-        onPress={() => navigation.navigate("Chatbot")}
+        onPress={() =>
+          navigation.navigate("Home", {
+            screen: "Chatbot",
+          })
+        }
         activeOpacity={0.8}
       >
         <LinearGradient
