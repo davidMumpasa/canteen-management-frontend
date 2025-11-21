@@ -70,13 +70,18 @@ class SocketService {
       // Join user-specific room for personalized updates
       this.joinUserRoom(user.id);
 
-      // Join admin room if user is admin/staff
+      // Join admin room if user is admin/staff/kitchen
       if (
         user.role === "admin" ||
         user.role === "staff" ||
         user.role === "kitchen"
       ) {
         this.joinAdminRoom();
+      }
+
+      // Join driver room if user is a delivery driver
+      if (user.role === "delivery" || user.role === "driver") {
+        this.joinDriverRoom();
       }
 
       // Notify listeners about connection
@@ -125,6 +130,37 @@ class SocketService {
     this.socket.on("orderDeleted", (data) => {
       console.log("🗑️ Order deleted received:", data);
       this.emit("orderDeleted", data);
+    });
+
+    // ===========================================
+    // DELIVERY/DRIVER EVENTS
+    // ===========================================
+    this.socket.on("orderReadyForPickup", (data) => {
+      console.log("🚗 Order ready for pickup:", data);
+      this.emit("orderReadyForPickup", data);
+      this.emit("orderStatusChanged", data);
+    });
+
+    this.socket.on("deliveryAssigned", (data) => {
+      console.log("📍 Delivery assigned:", data);
+      this.emit("deliveryAssigned", data);
+    });
+
+    this.socket.on("deliveryStarted", (data) => {
+      console.log("🚚 Delivery started:", data);
+      this.emit("deliveryStarted", data);
+      this.emit("orderStatusChanged", data);
+    });
+
+    this.socket.on("deliveryCompleted", (data) => {
+      console.log("✅ Delivery completed:", data);
+      this.emit("deliveryCompleted", data);
+      this.emit("orderStatusChanged", data);
+    });
+
+    this.socket.on("driverLocationUpdate", (data) => {
+      console.log("📍 Driver location updated:", data);
+      this.emit("driverLocationUpdate", data);
     });
 
     // ===========================================
@@ -315,6 +351,24 @@ class SocketService {
     }
   };
 
+  // Join driver room for delivery driver updates
+  joinDriverRoom = () => {
+    if (this.socket && this.socket.connected) {
+      this.socket.emit("join-driver-room");
+      this.joinedRooms.add("driver-room");
+      console.log("🚗 Joined driver room");
+    }
+  };
+
+  // Leave driver room
+  leaveDriverRoom = () => {
+    if (this.socket && this.socket.connected) {
+      this.socket.emit("leave-driver-room");
+      this.joinedRooms.delete("driver-room");
+      console.log("🚗 Left driver room");
+    }
+  };
+
   // Join specific order room for tracking
   joinOrderRoom = (orderId) => {
     if (this.socket && this.socket.connected && orderId) {
@@ -388,6 +442,42 @@ class SocketService {
   markMessageAsRead = (messageId, chatId) => {
     if (this.socket && this.socket.connected) {
       this.socket.emit("markAsRead", { messageId, chatId });
+    }
+  };
+
+  // ===========================================
+  // DRIVER-SPECIFIC METHODS
+  // ===========================================
+
+  // Update driver location
+  updateDriverLocation = (driverId, location) => {
+    if (this.socket && this.socket.connected) {
+      this.socket.emit("updateDriverLocation", {
+        driverId,
+        location,
+        timestamp: new Date().toISOString(),
+      });
+      console.log(`📍 Driver location updated for ${driverId}`);
+    }
+  };
+
+  // Update driver status
+  updateDriverStatus = (driverId, status) => {
+    if (this.socket && this.socket.connected) {
+      this.socket.emit("updateDriverStatus", {
+        driverId,
+        status,
+        timestamp: new Date().toISOString(),
+      });
+      console.log(`🚗 Driver status updated to ${status}`);
+    }
+  };
+
+  // Notify driver of new delivery assignment
+  notifyDeliveryAssignment = (orderId, driverId) => {
+    if (this.socket && this.socket.connected) {
+      this.socket.emit("deliveryAssigned", { orderId, driverId });
+      console.log(`📦 Notified driver ${driverId} of order ${orderId}`);
     }
   };
 
@@ -571,6 +661,8 @@ export const useSocket = () => {
     leaveOrderRoom: socketService.leaveOrderRoom,
     joinChatRoom: socketService.joinChatRoom,
     leaveChatRoom: socketService.leaveChatRoom,
+    joinDriverRoom: socketService.joinDriverRoom,
+    leaveDriverRoom: socketService.leaveDriverRoom,
     // Event management
     on: socketService.on,
     off: socketService.off,
@@ -579,6 +671,10 @@ export const useSocket = () => {
     startTyping: socketService.startTyping,
     stopTyping: socketService.stopTyping,
     markMessageAsRead: socketService.markMessageAsRead,
+    // Driver-specific
+    updateDriverLocation: socketService.updateDriverLocation,
+    updateDriverStatus: socketService.updateDriverStatus,
+    notifyDeliveryAssignment: socketService.notifyDeliveryAssignment,
     // Utilities
     getCurrentUser: socketService.getCurrentUser,
     getJoinedRooms: socketService.getJoinedRooms,
@@ -672,6 +768,91 @@ export const useOrderTracking = (orderId) => {
     orderStatus,
     isConnected,
     isTracking: socketService.isInRoom(`order-${orderId}`),
+  };
+};
+
+// Hook for driver delivery tracking
+export const useDriverDeliveries = (driverId) => {
+  const { socket, isConnected, joinDriverRoom, leaveDriverRoom, on, off } =
+    useSocket();
+  const [activeDeliveries, setActiveDeliveries] = React.useState([]);
+  const [readyOrders, setReadyOrders] = React.useState([]);
+
+  React.useEffect(() => {
+    if (!isConnected || !driverId) return;
+
+    // Join the driver room
+    joinDriverRoom();
+
+    // Set up delivery listeners
+    const handleOrderReady = (data) => {
+      console.log("🚗 Order ready for pickup:", data);
+      if (data.order && data.order.status === "ready") {
+        setReadyOrders((prev) => {
+          const exists = prev.find((o) => o.id === data.order.id);
+          return exists ? prev : [...prev, data.order];
+        });
+      }
+    };
+
+    const handleDeliveryAssigned = (data) => {
+      console.log("📦 Delivery assigned:", data);
+      if (data.driverId === driverId) {
+        setActiveDeliveries((prev) => [...prev, data.order]);
+      }
+    };
+
+    const handleOrderUpdate = (data) => {
+      if (data.order) {
+        const order = data.order;
+
+        // Update ready orders
+        if (order.status === "ready") {
+          setReadyOrders((prev) => {
+            const exists = prev.find((o) => o.id === order.id);
+            return exists ? prev : [...prev, order];
+          });
+        } else {
+          setReadyOrders((prev) => prev.filter((o) => o.id !== order.id));
+        }
+
+        // Update active deliveries
+        if (order.status === "out_for_delivery") {
+          setActiveDeliveries((prev) => {
+            const exists = prev.find((o) => o.id === order.id);
+            return exists
+              ? prev.map((o) => (o.id === order.id ? order : o))
+              : [...prev, order];
+          });
+        } else if (
+          order.status === "completed" ||
+          order.status === "delivered"
+        ) {
+          setActiveDeliveries((prev) => prev.filter((o) => o.id !== order.id));
+        }
+      }
+    };
+
+    on("orderReadyForPickup", handleOrderReady);
+    on("deliveryAssigned", handleDeliveryAssigned);
+    on("orderStatusChanged", handleOrderUpdate);
+    on("orderUpdated", handleOrderUpdate);
+
+    return () => {
+      // Clean up
+      leaveDriverRoom();
+      off("orderReadyForPickup", handleOrderReady);
+      off("deliveryAssigned", handleDeliveryAssigned);
+      off("orderStatusChanged", handleOrderUpdate);
+      off("orderUpdated", handleOrderUpdate);
+    };
+  }, [isConnected, driverId]);
+
+  return {
+    activeDeliveries,
+    readyOrders,
+    isConnected,
+    isInDriverRoom: socketService.isInRoom("driver-room"),
   };
 };
 

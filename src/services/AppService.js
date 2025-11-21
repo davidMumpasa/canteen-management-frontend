@@ -9,17 +9,27 @@ import base64 from "base-64";
 import { BASE_URL } from "../../config";
 
 class AppService {
-  // ✅ Decode user ID from stored token
   static async getUserIdFromToken() {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return null;
 
+      // Decode the payload
       const payloadBase64 = token.split(".")[1];
       const payload = JSON.parse(base64.decode(payloadBase64));
 
-      // console.log("Decoded payload:", payload);
-      return payload;
+      // Return user data with proper structure for socket
+      if (payload.role === "delivery") {
+        return {
+          id: payload.driverId || payload.id,
+          userId: payload.id,
+          role: payload.role,
+          email: payload.email,
+          firstName: payload.firstName,
+        };
+      } else {
+        return payload || null;
+      }
     } catch (err) {
       console.error("❌ Manual decode failed:", err);
       return null;

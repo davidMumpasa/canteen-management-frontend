@@ -1,5 +1,6 @@
 import "react-native-gesture-handler";
 import "./global.css";
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -25,10 +26,15 @@ import PayPalPayment from "./src/screens/PayPalPayment";
 import NotificationScreen from "./src/screens/NotificationScreen";
 import UserOrdersScreen from "./src/screens/UserOrdersScreen";
 
+// Import Delivery Driver Screens
+import DeliveryDriverHomeScreen from "./src/screens/Delivery/DeliveryDriverHomeScreen";
+import ActiveDeliveriesScreen from "./src/screens/Delivery/ActiveDeliveriesScreen";
+import DriverProfileScreen from "./src/screens/Delivery/DriverProfileScreen";
+
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Create a Stack Navigator for each tab that needs additional screens
+// ==================== HOME STACK ====================
 function HomeStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -40,6 +46,7 @@ function HomeStack() {
   );
 }
 
+// ==================== CART STACK ====================
 function CartStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -50,27 +57,17 @@ function CartStack() {
   );
 }
 
+// ==================== ORDERS STACK ====================
 function OrdersStack() {
   return (
-    <Stack.Navigator
-      screenOptions={{ headerShown: false }}
-      initialRouteName="OrdersMain"
-    >
-      <Stack.Screen
-        name="OrdersMain"
-        component={OrderScreen}
-        options={{
-          // Reset to this screen when tab is pressed
-          tabBarOnPress: ({ navigation, defaultHandler }) => {
-            defaultHandler();
-          },
-        }}
-      />
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="OrdersMain" component={OrderScreen} />
       <Stack.Screen name="MyOrders" component={UserOrdersScreen} />
     </Stack.Navigator>
   );
 }
 
+// ==================== PROFILE STACK ====================
 function ProfileStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -81,11 +78,65 @@ function ProfileStack() {
   );
 }
 
-// Main bottom tab navigator with nested stacks
+// ==================== DELIVERY DRIVER BOTTOM TABS ====================
+function DeliveryDriverTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName;
+          if (route.name === "ReadyOrders")
+            iconName = focused ? "cube" : "cube-outline";
+          else if (route.name === "ActiveOrders")
+            iconName = focused ? "car" : "car-outline";
+          else if (route.name === "DriverProfile")
+            iconName = focused ? "person" : "person-outline";
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+        tabBarActiveTintColor: "#FF6B00",
+        tabBarInactiveTintColor: "#9CA3AF",
+        tabBarStyle: {
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 8,
+          backgroundColor: "#FFFFFF",
+          borderTopWidth: 1,
+          borderTopColor: "#E5E7EB",
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: "600",
+        },
+      })}
+    >
+      <Tab.Screen
+        name="ReadyOrders"
+        component={DeliveryDriverHomeScreen}
+        options={{ title: "Ready" }}
+      />
+      <Tab.Screen
+        name="ActiveOrders"
+        component={ActiveDeliveriesScreen}
+        options={{ title: "Active" }}
+      />
+      <Tab.Screen
+        name="DriverProfile"
+        component={DriverProfileScreen}
+        options={{ title: "Profile" }}
+      />
+    </Tab.Navigator>
+  );
+}
+
+// ==================== MAIN BOTTOM TAB (Regular Users) ====================
 function MainTabs() {
   return (
     <Tab.Navigator
-      screenOptions={{ headerShown: false }}
+      screenOptions={{
+        headerShown: false,
+        lazy: false,
+      }}
       tabBar={(props) => <CustomBottomNav {...props} />}
     >
       <Tab.Screen
@@ -94,6 +145,7 @@ function MainTabs() {
         options={{
           tabBarLabel: "Home",
           title: "Home",
+          unmountOnBlur: false,
         }}
       />
       <Tab.Screen
@@ -102,6 +154,7 @@ function MainTabs() {
         options={{
           tabBarLabel: "Cart",
           title: "Cart",
+          unmountOnBlur: false,
         }}
       />
       <Tab.Screen
@@ -110,13 +163,8 @@ function MainTabs() {
         options={{
           tabBarLabel: "Orders",
           title: "Orders",
+          unmountOnBlur: false,
         }}
-        listeners={({ navigation }) => ({
-          tabPress: (e) => {
-            // Reset to the first screen in OrdersStack when tab is pressed
-            navigation.navigate("Orders", { screen: "OrdersMain" });
-          },
-        })}
       />
       <Tab.Screen
         name="Profile"
@@ -124,12 +172,14 @@ function MainTabs() {
         options={{
           tabBarLabel: "Profile",
           title: "Profile",
+          unmountOnBlur: false,
         }}
       />
     </Tab.Navigator>
   );
 }
 
+// ==================== MAIN APP ====================
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -143,7 +193,7 @@ export default function App() {
               presentation: "card",
             }}
           >
-            {/* Auth screens - NO BOTTOM NAV */}
+            {/* ==================== AUTH SCREENS ==================== */}
             <Stack.Screen
               name="Splash"
               component={SplashScreen}
@@ -158,12 +208,22 @@ export default function App() {
               component={ForgotPasswordScreen}
             />
 
-            {/* Main app with bottom nav - BOTTOM NAV EVERYWHERE */}
+            {/* ==================== MAIN APP (Regular Users) ==================== */}
             <Stack.Screen
               name="Main"
               component={MainTabs}
               options={{
                 gestureEnabled: false,
+              }}
+            />
+
+            {/* ==================== DELIVERY DRIVER APP ==================== */}
+            <Stack.Screen
+              name="DeliveryDriver"
+              component={DeliveryDriverTabs}
+              options={{
+                gestureEnabled: false,
+                headerShown: false,
               }}
             />
           </Stack.Navigator>
@@ -172,3 +232,51 @@ export default function App() {
     </GestureHandlerRootView>
   );
 }
+
+// ==================== LOGIN NAVIGATION FIX ====================
+// In your LoginScreen.js (or wherever you have goToHome function):
+
+const goToHome = () => {
+  bottomSheetRef.current?.close();
+
+  // Route based on role
+  AsyncStorage.getItem("userRole").then((role) => {
+    if (role === "driver") {
+      // Navigate to Delivery Driver app
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "DeliveryDriver" }],
+      });
+    } else {
+      // Navigate to regular user app
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "Main" }],
+      });
+    }
+  });
+};
+
+// ==================== NAVIGATION STRUCTURE SUMMARY ====================
+/*
+Root Stack Navigator:
+├── Splash
+├── Login
+├── Register
+├── ForgotPassword
+├── Main (Bottom Tabs for Regular Users)
+│   ├── Home
+│   ├── Cart
+│   ├── Orders
+│   └── Profile
+└── DeliveryDriver (Bottom Tabs for Drivers)
+    ├── ReadyOrders (Orange theme)
+    ├── ActiveOrders (Blue theme)
+    └── DriverProfile (Purple theme)
+
+Navigation Flow:
+1. Login → Check role from AsyncStorage
+2. If role === "driver" → Navigate to DeliveryDriver
+3. If role !== "driver" → Navigate to Main
+4. Both are top-level routes in the Stack Navigator
+*/

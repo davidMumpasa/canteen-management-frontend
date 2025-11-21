@@ -3,6 +3,7 @@ import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "react-native-vector-icons/Ionicons";
+import FloatingChatButton from "../components/FloatingChatButton";
 
 export default function CustomBottomNav({ state, descriptors, navigation }) {
   return (
@@ -48,23 +49,15 @@ export default function CustomBottomNav({ state, descriptors, navigation }) {
         })}
       </LinearGradient>
 
-      {/* Floating Chat Button */}
-      <TouchableOpacity
-        style={styles.chatButton}
-        onPress={() =>
-          navigation.navigate("Home", {
-            screen: "Chatbot",
-          })
-        }
-        activeOpacity={0.8}
-      >
-        <LinearGradient
-          colors={["#ff6b6b", "#ff8e8e"]}
-          style={styles.chatButtonGradient}
-        >
-          <Ionicons name="chatbubble-ellipses" size={28} color="white" />
-        </LinearGradient>
-      </TouchableOpacity>
+      {/* Floating Chat Button - Now using the draggable FloatingChatButton component */}
+
+      <FloatingChatButton
+        onPress={() => {
+          console.log("onPress triggered in parent!");
+          navigation.navigate("Home", { screen: "Chatbot" });
+        }}
+        isConnected={false}
+      />
     </View>
   );
 }
@@ -83,21 +76,5 @@ const styles = StyleSheet.create({
   activeNavButton: { padding: 10, borderRadius: 30 },
   navLabel: { fontSize: 12, color: "#999", marginTop: 4 },
   navLabelActive: { color: "#764ba2", fontWeight: "bold" },
-  chatButton: {
-    position: "absolute",
-    bottom: 110,
-    right: 20,
-    shadowColor: "#ff6b6b",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 12,
-  },
-  chatButtonGradient: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  // Removed chatButton and chatButtonGradient styles as they are now handled by FloatingChatButton
 });

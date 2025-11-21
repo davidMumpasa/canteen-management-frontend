@@ -11,7 +11,10 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  StyleSheet,
+  StatusBar,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import axios from "axios";
 import { BASE_URL } from "../../config";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -19,13 +22,14 @@ import { useNavigation } from "@react-navigation/native";
 import EditProfileModal from "./EditProfileModal";
 import AllergyManagementModal from "./AllergyManagementModal";
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 
 const ProfileScreen = () => {
   // Animation states
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
   const [scaleAnim] = useState(new Animated.Value(0.8));
+  const [headerScroll] = useState(new Animated.Value(0));
 
   const navigation = useNavigation();
   const [logoutLoading, setLogoutLoading] = useState(false);
@@ -45,85 +49,133 @@ const ProfileScreen = () => {
   const menuItems = [
     {
       title: "Order History",
-      icon: "time",
-      color: "#667eea",
+      icon: "receipt-outline",
+      color: "#8B5CF6",
+      gradient: ["#8B5CF6", "#7C3AED"],
       badge: null,
       onPress: () => navigation.navigate("MyOrders"),
     },
     {
       title: "My Allergies",
-      icon: "medical",
+      icon: "medical-outline",
       color: "#EF4444",
+      gradient: ["#EF4444", "#DC2626"],
       badge: null,
       onPress: () => setAllergyModalVisible(true),
     },
-    { title: "Favorite Foods", icon: "heart", color: "#ff6b6b", badge: null },
-    { title: "Payment Methods", icon: "card", color: "#4ecdc4", badge: null },
+    {
+      title: "Favorite Foods",
+      icon: "heart-outline",
+      color: "#EC4899",
+      gradient: ["#EC4899", "#DB2777"],
+      badge: null,
+    },
+    {
+      title: "Payment Methods",
+      icon: "card-outline",
+      color: "#06B6D4",
+      gradient: ["#06B6D4", "#0891B2"],
+      badge: null,
+    },
     {
       title: "Delivery Addresses",
-      icon: "location",
-      color: "#ffa726",
+      icon: "location-outline",
+      color: "#F59E0B",
+      gradient: ["#F59E0B", "#D97706"],
       badge: "2",
     },
     {
       title: "Notifications",
-      icon: "notifications",
-      color: "#ab47bc",
+      icon: "notifications-outline",
+      color: "#10B981",
+      gradient: ["#10B981", "#059669"],
       badge: null,
     },
     {
       title: "Help & Support",
-      icon: "help-circle",
-      color: "#66bb6a",
+      icon: "help-circle-outline",
+      color: "#6366F1",
+      gradient: ["#6366F1", "#4F46E5"],
       badge: null,
     },
-    { title: "Settings", icon: "settings", color: "#78909c", badge: null },
+    {
+      title: "Settings",
+      icon: "settings-outline",
+      color: "#64748B",
+      gradient: ["#64748B", "#475569"],
+      badge: null,
+    },
   ];
 
   const handleLogout = async () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      {
-        text: "Cancel",
-        style: "cancel",
-      },
-      {
-        text: "Sign Out",
-        style: "destructive",
-        onPress: async () => {
-          setLogoutLoading(true);
-          try {
-            const token = await AsyncStorage.getItem("token");
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to sign out?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: async () => {
+            setLogoutLoading(true);
+            try {
+              const token = await AsyncStorage.getItem("token");
 
-            if (token) {
+              // Try to call logout API, but don't fail if it errors
+              if (token) {
+                try {
+                  await axios.post(
+                    `${BASE_URL}/users/logout`,
+                    {},
+                    {
+                      headers: {
+                        Authorization: `Bearer ${token}`,
+                      },
+                      timeout: 5000, // 5 second timeout
+                    }
+                  );
+                } catch (apiError) {
+                  console.log(
+                    "Logout API call failed, continuing with local logout"
+                  );
+                }
+              }
+
+              // Clear all stored data
+              await AsyncStorage.multiRemove(["token", "user", "userRole"]);
+
+              // Force navigation reset to Login screen
+              navigation.reset({
+                index: 0,
+                routes: [{ name: "Login" }],
+              });
+            } catch (error) {
+              console.error("Logout error:", error);
+
+              // Even if there's an error, try to clear storage and navigate
               try {
-                await axios.post(
-                  `${BASE_URL}/users/logout`,
-                  {},
-                  {
-                    headers: {
-                      Authorization: `Bearer ${token}`,
-                    },
-                  }
-                );
-              } catch (apiError) {
-                console.log(
-                  "Logout API call failed, but continuing with local logout:",
-                  apiError
+                await AsyncStorage.clear();
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: "Login" }],
+                });
+              } catch (finalError) {
+                Alert.alert(
+                  "Error",
+                  "Failed to sign out. Please restart the app."
                 );
               }
+            } finally {
+              setLogoutLoading(false);
             }
-
-            await AsyncStorage.multiRemove(["token", "user", "userRole"]);
-            navigation.navigate("Login");
-          } catch (error) {
-            console.error("Logout error:", error);
-            Alert.alert("Error", "Failed to sign out. Please try again.");
-          } finally {
-            setLogoutLoading(false);
-          }
+          },
         },
-      },
-    ]);
+      ],
+      { cancelable: true }
+    );
   };
 
   const fetchCurrentUser = async () => {
@@ -131,7 +183,7 @@ const ProfileScreen = () => {
       const token = await AsyncStorage.getItem("token");
       if (!token) {
         setError("No authentication token found");
-        return;
+        return null;
       }
 
       const response = await axios.get(`${BASE_URL}/users/me`, {
@@ -142,24 +194,22 @@ const ProfileScreen = () => {
 
       if (response.data.user) {
         setUser(response.data.user);
+        return response.data.user;
       }
+      return null;
     } catch (err) {
       setError("Failed to fetch user profile");
       console.error("Error fetching current user:", err);
+      return null;
     }
   };
 
-  const fetchUserStats = async () => {
+  const fetchUserStats = async (userId) => {
     try {
       const token = await AsyncStorage.getItem("token");
-      if (!token) return;
+      if (!token || !userId) return;
 
-      if (!user || !user.id) {
-        console.log("User not loaded yet, skipping stats fetch");
-        return;
-      }
-
-      const response = await axios.get(`${BASE_URL}/users/stats/${user.id}`, {
+      const response = await axios.get(`${BASE_URL}/users/stats/${userId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -173,12 +223,12 @@ const ProfileScreen = () => {
     }
   };
 
-  const fetchAllergyCount = async () => {
+  const fetchAllergyCount = async (userId) => {
     try {
       const token = await AsyncStorage.getItem("token");
-      if (!token || !user?.id) return;
+      if (!token || !userId) return;
 
-      const response = await axios.get(`${BASE_URL}/allergy/${user.id}`, {
+      const response = await axios.get(`${BASE_URL}/allergy/${userId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -195,9 +245,16 @@ const ProfileScreen = () => {
   const loadData = async () => {
     setLoading(true);
     setError(null);
-    await fetchCurrentUser();
-    await fetchUserStats();
-    await fetchAllergyCount();
+
+    const userData = await fetchCurrentUser();
+
+    if (userData && userData.id) {
+      await Promise.all([
+        fetchUserStats(userData.id),
+        fetchAllergyCount(userData.id),
+      ]);
+    }
+
     setLoading(false);
   };
 
@@ -222,7 +279,9 @@ const ProfileScreen = () => {
 
   const handleAllergyModalClose = () => {
     setAllergyModalVisible(false);
-    fetchAllergyCount(); // Refresh allergy count when modal closes
+    if (user?.id) {
+      fetchAllergyCount(user.id);
+    }
   };
 
   useEffect(() => {
@@ -231,27 +290,21 @@ const ProfileScreen = () => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 1000,
+        duration: 800,
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 800,
+        duration: 600,
         useNativeDriver: true,
       }),
       Animated.timing(scaleAnim, {
         toValue: 1,
-        duration: 600,
+        duration: 500,
         useNativeDriver: true,
       }),
     ]).start();
   }, []);
-
-  useEffect(() => {
-    if (user?.id) {
-      fetchAllergyCount();
-    }
-  }, [user]);
 
   const updatedMenuItems = menuItems.map((item) => {
     if (item.title === "Order History" && userStats?.orderStats?.totalOrders) {
@@ -267,330 +320,333 @@ const ProfileScreen = () => {
     {
       label: "Total Orders",
       value: userStats?.orderStats?.totalOrders || 0,
-      icon: "restaurant",
-      color: "#667eea",
+      icon: "restaurant-outline",
+      gradient: ["#8B5CF6", "#7C3AED"],
     },
     {
-      label: "Loyalty Points",
+      label: "Points",
       value: Math.floor(userStats?.orderStats?.totalSpent || 0),
-      icon: "star",
-      color: "#ff6b6b",
+      icon: "star-outline",
+      gradient: ["#F59E0B", "#D97706"],
     },
     {
-      label: "Member Since",
+      label: "Since",
       value: formatMemberSince(user?.createdAt).split(" ")[1] || "2024",
-      icon: "calendar",
-      color: "#4ecdc4",
+      icon: "calendar-outline",
+      gradient: ["#06B6D4", "#0891B2"],
     },
   ];
 
   if (loading) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50 justify-center items-center">
-        <ActivityIndicator size="large" color="#667eea" />
-        <Text className="mt-4 text-gray-600">Loading profile...</Text>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
   if (error || !user) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50 justify-center items-center px-6">
-        <Ionicons name="alert-circle" size={48} color="#ff6b6b" />
-        <Text className="mt-4 text-gray-800 text-lg font-semibold text-center">
-          {error || "Unable to load profile"}
-        </Text>
-        <TouchableOpacity
-          className="mt-4 bg-blue-500 px-6 py-3 rounded-full"
-          onPress={loadData}
-        >
-          <Text className="text-white font-semibold">Try Again</Text>
-        </TouchableOpacity>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.errorContainer}>
+          <View style={styles.errorIconContainer}>
+            <Ionicons name="alert-circle-outline" size={64} color="#EF4444" />
+          </View>
+          <Text style={styles.errorTitle}>Oops!</Text>
+          <Text style={styles.errorMessage}>
+            {error || "Unable to load profile"}
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadData}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     );
   }
 
-  const StatCard = ({ stat, index }) => (
-    <Animated.View
-      className="flex-1 bg-white p-5 rounded-2xl items-center mx-1 shadow-sm"
-      style={{
-        opacity: fadeAnim,
-        transform: [
-          {
-            translateY: slideAnim.interpolate({
-              inputRange: [0, 50],
-              outputRange: [0, 50 * (index + 1)],
-            }),
-          },
-        ],
-      }}
-    >
-      <View
-        className="w-12 h-12 rounded-full justify-center items-center mb-3"
-        style={{ backgroundColor: stat.color + "15" }}
-      >
-        <Ionicons name={stat.icon} size={24} color={stat.color} />
-      </View>
-      <Text className="text-xl font-bold text-gray-800 mb-1">{stat.value}</Text>
-      <Text className="text-xs text-gray-600 text-center">{stat.label}</Text>
-    </Animated.View>
-  );
-
-  const MenuItem = ({ item, index }) => (
-    <Animated.View
-      className="border-b border-gray-100"
-      style={{
-        opacity: fadeAnim,
-        transform: [
-          {
-            translateX: slideAnim.interpolate({
-              inputRange: [0, 50],
-              outputRange: [0, index % 2 === 0 ? -30 : 30],
-            }),
-          },
-        ],
-      }}
-    >
-      <TouchableOpacity
-        className="flex-row items-center justify-between py-4 px-5"
-        onPress={item.onPress}
-      >
-        <View className="flex-row items-center flex-1">
-          <View
-            className="w-11 h-11 rounded-xl justify-center items-center mr-4"
-            style={{ backgroundColor: item.color + "15" }}
-          >
-            <Ionicons name={item.icon} size={22} color={item.color} />
-          </View>
-          <Text className="text-base font-medium text-gray-800 flex-1">
-            {item.title}
-          </Text>
-        </View>
-        <View className="flex-row items-center">
-          {item.badge && (
-            <View className="bg-red-500 min-w-6 h-6 rounded-full justify-center items-center mr-3">
-              <Text className="text-xs font-bold text-white">{item.badge}</Text>
-            </View>
-          )}
-          <Ionicons name="chevron-forward" size={20} color="#999" />
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
-  );
+  const headerOpacity = headerScroll.interpolate({
+    inputRange: [0, 100],
+    outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
-      <ScrollView
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Animated Header */}
+      <Animated.View
+        style={[styles.animatedHeader, { opacity: headerOpacity }]}
+      >
+        <LinearGradient
+          colors={["#8B5CF6", "#7C3AED"]}
+          style={styles.animatedHeaderGradient}
+        >
+          <Text style={styles.animatedHeaderText}>
+            {user.firstName} {user.lastName}
+          </Text>
+        </LinearGradient>
+      </Animated.View>
+
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
-        className="flex-1"
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: headerScroll } } }],
+          { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#8B5CF6"
+          />
         }
       >
-        {/* Header with Gradient */}
-        <View className="mb-9">
-          <View className="bg-blue-500 pb-10 rounded-b-3xl">
-            <View className="items-center px-5 pt-5">
-              {/* Profile Avatar */}
-              <Animated.View
-                className="mb-5"
-                style={{
-                  opacity: fadeAnim,
-                  transform: [{ scale: scaleAnim }],
-                }}
-              >
-                <View className="relative">
-                  <View className="w-24 h-24 rounded-full bg-white bg-opacity-20 justify-center items-center border-2 border-white border-opacity-30 shadow-lg">
-                    <Text className="text-4xl font-bold text-blue-500">
-                      {user?.firstName
-                        ? user.firstName.charAt(0).toUpperCase()
-                        : ""}
-                    </Text>
-                  </View>
-                  <View className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-500 border-2 border-white" />
-                </View>
-              </Animated.View>
+        {/* Hero Header */}
+        <LinearGradient
+          colors={["#8B5CF6", "#7C3AED", "#6D28D9"]}
+          style={styles.heroSection}
+        >
+          <View style={styles.heroPattern} />
 
-              {/* User Info */}
-              <Animated.View
-                className="items-center mb-5"
-                style={{
-                  opacity: fadeAnim,
-                  transform: [{ translateY: slideAnim }],
-                }}
+          <Animated.View
+            style={[
+              styles.avatarContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }],
+              },
+            ]}
+          >
+            <View style={styles.avatarWrapper}>
+              <LinearGradient
+                colors={["#FFFFFF", "#F3E8FF"]}
+                style={styles.avatar}
               >
-                <Text className="text-2xl font-bold text-white mb-1">
-                  {user.firstName} {user.lastName}
+                <Text style={styles.avatarText}>
+                  {user?.firstName?.charAt(0).toUpperCase() || ""}
                 </Text>
-                <Text className="text-base text-white text-opacity-80 mb-3">
-                  {user.email}
-                </Text>
-                <View className="flex-row gap-3">
-                  <View className="flex-row items-center bg-white bg-opacity-15 px-3 py-1.5 rounded-2xl">
-                    <Ionicons
-                      name="school"
-                      size={14}
-                      color="rgba(255,255,255,0.8)"
-                    />
-                    <Text className="text-xs text-blue-500 text-opacity-80 ml-1 font-medium">
-                      {user.department || "N/A"}
-                    </Text>
-                  </View>
-                  <View className="flex-row items-center bg-white bg-opacity-15 px-3 py-1.5 rounded-2xl">
-                    <Ionicons
-                      name="person"
-                      size={14}
-                      color="rgba(255,255,255,0.8)"
-                    />
-                    <Text className="text-xs text-blue-500 text-opacity-80 ml-1 font-medium">
-                      {user.role === "student" ? "Student" : user.role}
-                    </Text>
-                  </View>
-                </View>
-              </Animated.View>
-
-              {/* Edit Profile Button */}
-              <Animated.View
-                className="w-full"
-                style={{
-                  opacity: fadeAnim,
-                  transform: [{ scale: scaleAnim }],
-                }}
-              >
-                <TouchableOpacity
-                  className="flex-row items-center justify-center bg-white py-3 px-6 rounded-3xl shadow-md"
-                  onPress={() => setEditModalVisible(true)}
-                >
-                  <Ionicons name="create" size={18} color="#667eea" />
-                  <Text className="text-base font-semibold text-blue-500 ml-2">
-                    Edit Profile
-                  </Text>
-                </TouchableOpacity>
-              </Animated.View>
+              </LinearGradient>
+              <View style={styles.onlineBadge} />
             </View>
-          </View>
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              styles.userInfo,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <Text style={styles.userName}>
+              {user.firstName} {user.lastName}
+            </Text>
+            <Text style={styles.userEmail}>{user.email}</Text>
+
+            <View style={styles.badgeContainer}>
+              <View style={styles.badge}>
+                <Ionicons name="school-outline" size={14} color="#FFFFFF" />
+                <Text style={styles.badgeText}>{user.department || "N/A"}</Text>
+              </View>
+              <View style={styles.badge}>
+                <Ionicons name="person-outline" size={14} color="#FFFFFF" />
+                <Text style={styles.badgeText}>
+                  {user.role === "student" ? "Student" : user.role}
+                </Text>
+              </View>
+            </View>
+          </Animated.View>
+
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => setEditModalVisible(true)}
+          >
+            <Ionicons name="create-outline" size={20} color="#8B5CF6" />
+            <Text style={styles.editButtonText}>Edit Profile</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+
+        {/* Stats Cards */}
+        <View style={styles.statsContainer}>
+          {stats.map((stat, index) => (
+            <Animated.View
+              key={index}
+              style={[
+                styles.statCard,
+                {
+                  opacity: fadeAnim,
+                  transform: [
+                    {
+                      translateY: slideAnim.interpolate({
+                        inputRange: [0, 50],
+                        outputRange: [0, 50 * (index + 1) * 0.3],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <LinearGradient
+                colors={stat.gradient}
+                style={styles.statGradient}
+              >
+                <Ionicons name={stat.icon} size={28} color="#FFFFFF" />
+                <Text style={styles.statValue}>{stat.value}</Text>
+                <Text style={styles.statLabel}>{stat.label}</Text>
+              </LinearGradient>
+            </Animated.View>
+          ))}
         </View>
 
-        {/* Stats Section */}
-        <View className="px-5 mb-7 -mt-5">
-          <View className="flex-row justify-between">
-            {stats.map((stat, index) => (
-              <StatCard key={index} stat={stat} index={index} />
+        {/* Allergy Alert */}
+        {allergyCount > 0 && (
+          <TouchableOpacity
+            style={styles.allergyAlert}
+            onPress={() => setAllergyModalVisible(true)}
+          >
+            <View style={styles.allergyIconContainer}>
+              <Ionicons name="shield-checkmark" size={32} color="#EF4444" />
+            </View>
+            <View style={styles.allergyContent}>
+              <Text style={styles.allergyTitle}>
+                {allergyCount} {allergyCount === 1 ? "Allergy" : "Allergies"}{" "}
+                Registered
+              </Text>
+              <Text style={styles.allergySubtitle}>
+                Tap to manage your allergy profile
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#EF4444" />
+          </TouchableOpacity>
+        )}
+
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.quickActions}>
+            {[
+              {
+                icon: "add-circle",
+                label: "New Order",
+                color: "#8B5CF6",
+                gradient: ["#8B5CF6", "#7C3AED"],
+              },
+              {
+                icon: "repeat",
+                label: "Reorder",
+                color: "#EC4899",
+                gradient: ["#EC4899", "#DB2777"],
+              },
+              {
+                icon: "medical",
+                label: "Allergies",
+                color: "#EF4444",
+                gradient: ["#EF4444", "#DC2626"],
+                onPress: () => setAllergyModalVisible(true),
+              },
+              {
+                icon: "chatbubble-ellipses",
+                label: "Support",
+                color: "#06B6D4",
+                gradient: ["#06B6D4", "#0891B2"],
+              },
+            ].map((action, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.quickActionItem}
+                onPress={action.onPress}
+              >
+                <LinearGradient
+                  colors={action.gradient}
+                  style={styles.quickActionIcon}
+                >
+                  <Ionicons name={action.icon} size={24} color="#FFFFFF" />
+                </LinearGradient>
+                <Text style={styles.quickActionLabel}>{action.label}</Text>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* Allergy Alert Banner (if user has allergies) */}
-        {allergyCount > 0 && (
-          <View className="px-5 mb-7">
-            <TouchableOpacity
-              onPress={() => setAllergyModalVisible(true)}
-              className="bg-red-50 border-2 border-red-200 rounded-2xl p-4 flex-row items-center"
-            >
-              <View className="w-12 h-12 rounded-full bg-red-100 justify-center items-center mr-3">
-                <Ionicons name="shield-checkmark" size={24} color="#EF4444" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-base font-bold text-red-700 mb-1">
-                  {allergyCount} {allergyCount === 1 ? "Allergy" : "Allergies"}{" "}
-                  Registered
-                </Text>
-                <Text className="text-sm text-red-600">
-                  Tap to manage your allergy profile
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#EF4444" />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Quick Actions */}
-        <View className="px-5 mb-7">
-          <Text className="text-xl font-bold text-gray-800 mb-4">
-            Quick Actions
-          </Text>
-          <View className="flex-row justify-between">
-            <TouchableOpacity
-              className="items-center flex-1"
-              onPress={() => navigation.navigate("Main", { screen: "Home" })}
-            >
-              <View className="w-15 h-15 rounded-3xl justify-center items-center bg-blue-100 mb-2">
-                <Ionicons name="add" size={24} color="#667eea" />
-              </View>
-              <Text className="text-xs font-semibold text-gray-600 text-center">
-                New Order
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity className="items-center flex-1">
-              <View className="w-15 h-15 rounded-3xl justify-center items-center bg-red-100 mb-2">
-                <Ionicons name="repeat" size={24} color="#ff6b6b" />
-              </View>
-              <Text className="text-xs font-semibold text-gray-600 text-center">
-                Reorder
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              className="items-center flex-1"
-              onPress={() => setAllergyModalVisible(true)}
-            >
-              <View className="w-15 h-15 rounded-3xl justify-center items-center bg-orange-100 mb-2">
-                <Ionicons name="medical" size={24} color="#EF4444" />
-              </View>
-              <Text className="text-xs font-semibold text-gray-600 text-center">
-                Allergies
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity className="items-center flex-1">
-              <View className="w-15 h-15 rounded-3xl justify-center items-center bg-teal-100 mb-2">
-                <Ionicons name="chatbubble" size={24} color="#4ecdc4" />
-              </View>
-              <Text className="text-xs font-semibold text-gray-600 text-center">
-                Support
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* Menu Items */}
-        <View className="px-5 mb-7">
-          <Text className="text-xl font-bold text-gray-800 mb-4">Account</Text>
-          <View className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account</Text>
+          <View style={styles.menuContainer}>
             {updatedMenuItems.map((item, index) => (
-              <MenuItem key={index} item={item} index={index} />
+              <Animated.View
+                key={index}
+                style={[
+                  styles.menuItemWrapper,
+                  {
+                    opacity: fadeAnim,
+                    transform: [
+                      {
+                        translateX: slideAnim.interpolate({
+                          inputRange: [0, 50],
+                          outputRange: [0, index % 2 === 0 ? -30 : 30],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={item.onPress}
+                >
+                  <View style={styles.menuItemLeft}>
+                    <LinearGradient
+                      colors={item.gradient}
+                      style={styles.menuIcon}
+                    >
+                      <Ionicons name={item.icon} size={22} color="#FFFFFF" />
+                    </LinearGradient>
+                    <Text style={styles.menuItemText}>{item.title}</Text>
+                  </View>
+                  <View style={styles.menuItemRight}>
+                    {item.badge && (
+                      <View style={styles.menuBadge}>
+                        <Text style={styles.menuBadgeText}>{item.badge}</Text>
+                      </View>
+                    )}
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color="#9CA3AF"
+                    />
+                  </View>
+                </TouchableOpacity>
+              </Animated.View>
             ))}
           </View>
         </View>
 
         {/* Logout Button */}
-        <Animated.View
-          className="px-5 mb-5"
-          style={{
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          }}
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          disabled={logoutLoading}
         >
-          <TouchableOpacity
-            className="flex-row items-center justify-center bg-white py-4 rounded-2xl border-2 border-red-500 shadow-sm"
-            onPress={handleLogout}
-            disabled={logoutLoading}
-            style={{ opacity: logoutLoading ? 0.5 : 1 }}
-          >
-            {logoutLoading ? (
-              <ActivityIndicator size="small" color="#ff6b6b" />
-            ) : (
-              <Ionicons name="log-out" size={20} color="#ff6b6b" />
-            )}
-            <Text className="text-base font-semibold text-red-500 ml-2">
-              {logoutLoading ? "Signing Out..." : "Sign Out"}
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
+          {logoutLoading ? (
+            <ActivityIndicator size="small" color="#EF4444" />
+          ) : (
+            <>
+              <Ionicons name="log-out-outline" size={24} color="#EF4444" />
+              <Text style={styles.logoutText}>Sign Out</Text>
+            </>
+          )}
+        </TouchableOpacity>
 
-        <View className="h-24" />
-      </ScrollView>
+        <View style={{ height: 40 }} />
+      </Animated.ScrollView>
 
       {/* Modals */}
       <EditProfileModal
@@ -608,5 +664,367 @@ const ProfileScreen = () => {
     </SafeAreaView>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+  },
+  errorIconContainer: {
+    marginBottom: 24,
+  },
+  errorTitle: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 12,
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  retryButton: {
+    backgroundColor: "#8B5CF6",
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 16,
+    elevation: 4,
+    shadowColor: "#8B5CF6",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  retryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  animatedHeader: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  },
+  animatedHeaderGradient: {
+    paddingTop: 50,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    alignItems: "center",
+  },
+  animatedHeaderText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  heroSection: {
+    paddingTop: 60,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    position: "relative",
+    overflow: "hidden",
+  },
+  heroPattern: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.1,
+  },
+  avatarContainer: {
+    marginBottom: 20,
+  },
+  avatarWrapper: {
+    position: "relative",
+  },
+  avatar: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 4,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  avatarText: {
+    fontSize: 48,
+    fontWeight: "bold",
+    color: "#8B5CF6",
+  },
+  onlineBadge: {
+    position: "absolute",
+    bottom: 4,
+    right: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#10B981",
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+  },
+  userInfo: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  userName: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#FFFFFF",
+    marginBottom: 6,
+  },
+  userEmail: {
+    fontSize: 15,
+    color: "rgba(255, 255, 255, 0.9)",
+    marginBottom: 16,
+  },
+  badgeContainer: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  badgeText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  editButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 30,
+    gap: 8,
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+  },
+  editButtonText: {
+    color: "#8B5CF6",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  statsContainer: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    marginTop: -30,
+    marginBottom: 20,
+    gap: 12,
+  },
+  statCard: {
+    flex: 1,
+  },
+  statGradient: {
+    borderRadius: 20,
+    padding: 20,
+    alignItems: "center",
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#FFFFFF",
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.9)",
+    fontWeight: "600",
+  },
+  allergyAlert: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF2F2",
+    marginHorizontal: 20,
+    marginBottom: 20,
+    padding: 20,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: "#FEE2E2",
+  },
+  allergyIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  allergyContent: {
+    flex: 1,
+  },
+  allergyTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#991B1B",
+    marginBottom: 4,
+  },
+  allergySubtitle: {
+    fontSize: 13,
+    color: "#DC2626",
+  },
+  section: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 16,
+  },
+  quickActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  quickActionItem: {
+    alignItems: "center",
+    flex: 1,
+  },
+  quickActionIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 10,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  quickActionLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#4B5563",
+    textAlign: "center",
+  },
+  menuContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    overflow: "hidden",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+  },
+  menuItemWrapper: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+  },
+  menuItemLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  menuIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  menuItemText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+    flex: 1,
+  },
+  menuItemRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  menuBadge: {
+    backgroundColor: "#EF4444",
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 8,
+  },
+  menuBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    marginHorizontal: 20,
+    paddingVertical: 18,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: "#FEE2E2",
+    gap: 10,
+    elevation: 2,
+    shadowColor: "#EF4444",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  logoutText: {
+    color: "#EF4444",
+    fontSize: 17,
+    fontWeight: "700",
+  },
+});
 
 export default ProfileScreen;

@@ -236,15 +236,73 @@ const ItemDetailScreen = ({ route, navigation }) => {
   const handleLearnMore = () => {
     setAllergyModalVisible(false);
 
-    // Navigate to chatbot with context about the allergy concern
-    const chatContext = {
-      type: "allergy_concern",
-      product: itemData.name,
-      allergyInfo: allergyResult,
-    };
+    // Create a focused, medium-length question with essential information
+    const allergyQuestion = `I have an allergy concern about "${
+      itemData.name
+    }" (Product ID: ${itemData.id}).
 
-    // Navigate to Chatbot screen - corrected navigation path for nested navigator
-    navigation.navigate("Chatbot", { context: chatContext });
+ALLERGY ASSESSMENT:
+• Risk Level: ${allergyResult.verdict.replace("_", " ").toUpperCase()}
+• Recommendation: ${allergyResult.recommendation.toUpperCase()}
+• Confidence: ${(allergyResult.confidence * 100).toFixed(0)}%
+${
+  allergyResult.matched_allergens && allergyResult.matched_allergens.length > 0
+    ? `• Detected Allergens: ${allergyResult.matched_allergens.join(", ")}`
+    : ""
+}
+• Analysis: ${allergyResult.reason}
+
+PRODUCT DETAILS:
+• Ingredients: ${
+      ingredientsList.length > 0 ? ingredientsList.join(", ") : "Not listed"
+    }
+• Declared Allergens: ${
+      allergensList.length > 0 ? allergensList.join(", ") : "None"
+    }
+• Dietary: ${
+      [
+        itemData.isVeg ? "Vegetarian" : null,
+        itemData.isVegan ? "Vegan" : null,
+        itemData.isGlutenFree ? "Gluten-Free" : null,
+      ]
+        .filter(Boolean)
+        .join(", ") || "Standard"
+    }
+${itemData.calories ? `• Calories: ${itemData.calories} kcal` : ""}
+
+MY ORDER:
+• Size: ${selectedSize} | Quantity: ${quantity} | Total: R${getCurrentPrice().toFixed(
+      2
+    )}
+
+QUESTIONS:
+1. What specific ingredients are causing this ${allergyResult.verdict.replace(
+      "_",
+      " "
+    )} alert?
+2. What symptoms should I watch for if I consume this?
+3. Can you suggest safer alternatives from the menu?
+4. Should I avoid this product or are there precautions I can take?
+
+Please provide clear, actionable advice for my situation.`;
+
+    // Navigate to Chatbot with the pre-filled question
+    navigation.navigate("Chatbot", {
+      preFillMessage: allergyQuestion,
+      context: {
+        type: "allergy_concern",
+        product: itemData.name,
+        productId: itemData.id,
+        allergyInfo: allergyResult,
+        ingredients: ingredientsList,
+        allergens: allergensList,
+        dietaryInfo: {
+          isVeg: itemData.isVeg,
+          isVegan: itemData.isVegan,
+          isGlutenFree: itemData.isGlutenFree,
+        },
+      },
+    });
   };
 
   const getRiskColor = (verdict) => {

@@ -24,7 +24,7 @@ import { useNavigation } from "@react-navigation/native";
 import AppService from "../services/AppService";
 const { width } = Dimensions.get("window");
 
-const ChatBotScreen = () => {
+const ChatBotScreen = ({ route }) => {
   const [messages, setMessages] = useState([
     {
       id: "1",
@@ -58,6 +58,41 @@ const ChatBotScreen = () => {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  useEffect(() => {
+    loadUserData();
+    loadChatHistory();
+
+    // Check if there's a pre-filled message from navigation params
+    if (route?.params?.preFillMessage) {
+      setInput(route.params.preFillMessage);
+
+      // Optionally, add a context message from the bot
+      if (route.params.context?.type === "allergy_concern") {
+        const contextMessage = {
+          id: Date.now().toString() + "_context",
+          text: `I see you have concerns about "${route.params.context.product}". I'm here to help! You can send the pre-filled question below or ask me anything else about this product's ingredients and your allergies. 🛡️`,
+          fromBot: true,
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        };
+
+        // Add context message after a short delay
+        setTimeout(() => {
+          setMessages((prev) => [...prev, contextMessage]);
+        }, 500);
+      }
+    }
+
+    // Header animation on mount
+    Animated.timing(headerAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+  }, [route?.params]);
 
   const loadUserData = async () => {
     try {

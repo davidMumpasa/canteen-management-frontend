@@ -2684,6 +2684,11 @@ expo-asset@~11.1.7:
     "@expo/image-utils" "^0.7.6"
     expo-constants "~17.1.7"
 
+expo-blur@~14.1.5:
+  version "14.1.5"
+  resolved "https://registry.yarnpkg.com/expo-blur/-/expo-blur-14.1.5.tgz#910712389e19286ccdc136275bf569f427aa05ef"
+  integrity sha512-CCLJHxN4eoAl06ESKT3CbMasJ98WsjF9ZQEJnuxtDb9ffrYbZ+g9ru84fukjNUOTtc8A8yXE5z8NgY1l0OMrmQ==
+
 expo-constants@~17.1.7:
   version "17.1.7"
   resolved "https://registry.npmjs.org/expo-constants/-/expo-constants-17.1.7.tgz"
@@ -4403,11 +4408,6 @@ react-native-maps@1.20.1:
   integrity sha512-NZI3B5Z6kxAb8gzb2Wxzu/+P2SlFIg1waHGIpQmazDSCRkNoHNY4g96g+xS0QPSaG/9xRBbDNnd2f2/OW6t6LQ==
   dependencies:
     "@types/geojson" "^7946.0.13"
-
-react-native-paypal-checkout@^1.0.4:
-  version "1.0.4"
-  resolved "https://registry.npmjs.org/react-native-paypal-checkout/-/react-native-paypal-checkout-1.0.4.tgz"
-  integrity sha512-DZPQ7qZihkir48B5jqmblzotuuQugGBotvVLzl2uW4bLBnPKDeCG2TvDappnTHMnYtYo/Ku4I0+tLJQX8JffYA==
 
 react-native-reanimated@~3.17.4:
   version "3.17.5"

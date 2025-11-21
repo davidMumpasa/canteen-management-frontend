@@ -11,14 +11,14 @@ import {
   Platform,
   StatusBar,
   Dimensions,
-  Image,
+  Modal,
+  StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import BottomSheet, { BottomSheetMethods } from "@gorhom/bottom-sheet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE_URL } from "../../config";
-import { useAlert } from "../hooks/useAlert";
 import AuthStyles from "../styles/AuthStyles";
 
 const { height, width } = Dimensions.get("window");
@@ -31,15 +31,25 @@ const LoginScreen = ({ navigation }) => {
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
 
+  // Custom alert states
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    type: "success", // 'success', 'error', 'warning'
+    title: "",
+    message: "",
+    icon: "checkmark-circle",
+  });
+
   const bottomSheetRef = useRef(null);
   const slideUpAnim = useRef(new Animated.Value(height)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const alertSlideAnim = useRef(new Animated.Value(-100)).current;
+  const alertOpacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // Entrance animation
-
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -80,9 +90,91 @@ const LoginScreen = ({ navigation }) => {
 
   const snapPoints = useMemo(() => ["35%", "55%"], []);
 
+  // Custom Alert Function
+  const showCustomAlert = (type, title, message) => {
+    const configs = {
+      success: {
+        icon: "checkmark-circle",
+        color: "#10B981",
+        bgColor: "#D1FAE5",
+      },
+      error: {
+        icon: "close-circle",
+        color: "#EF4444",
+        bgColor: "#FEE2E2",
+      },
+      warning: {
+        icon: "warning",
+        color: "#F59E0B",
+        bgColor: "#FEF3C7",
+      },
+    };
+
+    setAlertConfig({
+      type,
+      title,
+      message,
+      ...configs[type],
+    });
+    setAlertVisible(true);
+
+    // Animate in
+    Animated.parallel([
+      Animated.spring(alertSlideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+      Animated.timing(alertOpacityAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Auto dismiss after 3 seconds
+    setTimeout(() => {
+      dismissAlert();
+    }, 3000);
+  };
+
+  const dismissAlert = () => {
+    Animated.parallel([
+      Animated.timing(alertSlideAnim, {
+        toValue: -100,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(alertOpacityAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setAlertVisible(false);
+      alertSlideAnim.setValue(-100);
+      alertOpacityAnim.setValue(0);
+    });
+  };
+
   const handleLogin = async () => {
+    // Validation
     if (!email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
+      showCustomAlert(
+        "error",
+        "Missing Fields",
+        "Please fill in all fields to continue"
+      );
+      return;
+    }
+
+    if (!email.includes("@")) {
+      showCustomAlert(
+        "error",
+        "Invalid Email",
+        "Please enter a valid email address"
+      );
       return;
     }
 
@@ -91,9 +183,7 @@ const LoginScreen = ({ navigation }) => {
     try {
       const response = await fetch(`${BASE_URL}/users/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
@@ -104,21 +194,26 @@ const LoginScreen = ({ navigation }) => {
       }
 
       await AsyncStorage.setItem("token", data.token);
-      console.log("================");
-      console.log("Login:  ", data.token);
-      console.log("================");
-      Alert.alert("Success", "Login Successful");
-      bottomSheetRef.current?.snapToIndex(0);
+      await AsyncStorage.setItem("userRole", data.user.role);
+
+      // Show success and open bottom sheet
+      showCustomAlert(
+        "success",
+        "Login Successful",
+        `Welcome back, ${data.user.firstName || "User"}!`
+      );
 
       setTimeout(() => {
-        goToHome();
-      }, 2500);
+        bottomSheetRef.current?.snapToIndex(0);
+      }, 500);
 
-      navigation.replace("Main");
-      // navigation.navigate("MyOrders");
-      bottomSheetRef.current?.snapToIndex(0);
+      setTimeout(() => goToHome(), 2000);
     } catch (err) {
-      Alert.alert("Login Error", err.message);
+      showCustomAlert(
+        "error",
+        "Login Failed",
+        err.message || "Unable to sign in. Please check your credentials."
+      );
     } finally {
       setLoading(false);
     }
@@ -126,14 +221,27 @@ const LoginScreen = ({ navigation }) => {
 
   const goToHome = () => {
     bottomSheetRef.current?.close();
-    navigation.replace("Main");
+
+    AsyncStorage.getItem("userRole").then((role) => {
+      if (role === "driver") {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "DeliveryDriver" }],
+        });
+      } else {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "Main" }],
+        });
+      }
+    });
   };
 
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor="#1a1f36" />
       <SafeAreaView style={AuthStyles.container}>
-        {/* Background with gradient and floating elements */}
+        {/* Background with gradient */}
         <LinearGradient
           colors={["#1a1f36", "#2d3561", "#4a5568"]}
           style={AuthStyles.backgroundGradient}
@@ -145,7 +253,7 @@ const LoginScreen = ({ navigation }) => {
           <View style={AuthStyles.floatingElement2} />
           <View style={AuthStyles.floatingElement3} />
 
-          {/* Header section with logo and title */}
+          {/* Header section */}
           <Animated.View
             style={[
               AuthStyles.headerSection,
@@ -170,7 +278,7 @@ const LoginScreen = ({ navigation }) => {
           </Animated.View>
         </LinearGradient>
 
-        {/* Bottom sheet style login card */}
+        {/* Login card */}
         <Animated.View
           style={[
             AuthStyles.loginCard,
@@ -179,7 +287,6 @@ const LoginScreen = ({ navigation }) => {
             },
           ]}
         >
-          {/* Drag handle */}
           <View style={AuthStyles.dragHandle} />
 
           <KeyboardAvoidingView
@@ -319,6 +426,40 @@ const LoginScreen = ({ navigation }) => {
           </KeyboardAvoidingView>
         </Animated.View>
 
+        {/* Custom Alert Toast */}
+        {alertVisible && (
+          <Animated.View
+            style={[
+              styles.alertContainer,
+              {
+                transform: [{ translateY: alertSlideAnim }],
+                opacity: alertOpacityAnim,
+                backgroundColor: alertConfig.bgColor,
+              },
+            ]}
+          >
+            <View style={styles.alertContent}>
+              <Ionicons
+                name={alertConfig.icon}
+                size={28}
+                color={alertConfig.color}
+              />
+              <View style={styles.alertTextContainer}>
+                <Text style={[styles.alertTitle, { color: alertConfig.color }]}>
+                  {alertConfig.title}
+                </Text>
+                <Text style={styles.alertMessage}>{alertConfig.message}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={dismissAlert}
+                style={styles.alertCloseButton}
+              >
+                <Ionicons name="close" size={20} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        )}
+
         {/* Success Bottom Sheet */}
         <BottomSheet
           ref={bottomSheetRef}
@@ -367,5 +508,42 @@ const LoginScreen = ({ navigation }) => {
     </>
   );
 };
+
+const styles = StyleSheet.create({
+  alertContainer: {
+    position: "absolute",
+    top: Platform.OS === "ios" ? 60 : 40,
+    left: 20,
+    right: 20,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 9999,
+  },
+  alertContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  alertTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  alertTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 2,
+  },
+  alertMessage: {
+    fontSize: 14,
+    color: "#374151",
+  },
+  alertCloseButton: {
+    padding: 4,
+  },
+});
 
 export default LoginScreen;
