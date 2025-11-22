@@ -65,6 +65,10 @@ export const useNotifications = (userId) => {
         `${BASE_URL}/notifications/${notificationId}/read`,
         {
           method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId }), // ✅ Send userId for verification
         }
       );
       const data = await response.json();

@@ -646,6 +646,8 @@ const ProfileScreen = () => {
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />
+
+        <View style={{ height: 40 }} />
       </Animated.ScrollView>
 
       {/* Modals */}

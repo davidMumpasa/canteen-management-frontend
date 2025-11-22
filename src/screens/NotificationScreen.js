@@ -27,11 +27,11 @@ import {
   Info,
   AlertTriangle,
   RefreshCw,
-  IdCard,
 } from "lucide-react-native";
 import { BASE_URL } from "../../config";
 import AppService from "../services/AppService";
 
+// ✅ Get userId from token
 const getUserIdFromToken = async () => {
   try {
     const sessionUser = await AppService.getUserIdFromToken();
@@ -39,15 +39,14 @@ const getUserIdFromToken = async () => {
       Alert.alert("Error", "User not found");
       return null;
     }
-    const userId = sessionUser.id;
-    return userId;
+    return sessionUser.id;
   } catch (err) {
     console.error("❌ Error decoding token:", err);
     return null;
   }
 };
 
-// API Service
+// ✅ FIXED API Service - All methods now use correct HTTP verbs and endpoints
 const notificationAPI = {
   getUserNotifications: async (
     userId,
@@ -60,151 +59,119 @@ const notificationAPI = {
       if (unreadOnly) url += "&unreadOnly=true";
       if (type) url += `&type=${type}`;
 
+      console.log("📥 Fetching notifications:", url);
       const response = await fetch(url);
       const data = await response.json();
+
+      console.log("📥 Notifications response:", data);
       return data;
     } catch (error) {
-      console.error("Error fetching notifications:", error);
-      // Return mock data for demo
-      return {
-        success: true,
-        data: {
-          notifications: generateMockNotifications(userId),
-          pagination: { total: 10, page: 1, limit: 20, totalPages: 1 },
-        },
-      };
+      console.error("❌ Error fetching notifications:", error);
+      throw error;
     }
   },
 
   getUnreadCount: async (userId) => {
     try {
-      const response = await fetch(
-        `${BASE_URL}/notifications/user/${userId}/unread-count`
-      );
+      const url = `${BASE_URL}/notifications/user/${userId}/unread-count`;
+      console.log("📊 Fetching unread count:", url);
+
+      const response = await fetch(url);
       const data = await response.json();
-      return data.data.unreadCount;
+
+      console.log("📊 Unread count response:", data);
+
+      // ✅ Handle the correct response format: { success: true, count: 5 }
+      if (data.success && typeof data.count === "number") {
+        return data.count;
+      }
+
+      return 0;
     } catch (error) {
-      return 3; // Mock count
+      console.error("❌ Error fetching unread count:", error);
+      return 0;
     }
   },
 
-  markAsRead: async (notificationId) => {
+  // ✅ FIXED: Changed from PATCH to PUT
+  markAsRead: async (notificationId, userId) => {
     try {
-      const response = await fetch(
-        `${BASE_URL}/notifications/${notificationId}/read`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-      return await response.json();
+      const url = `${BASE_URL}/notifications/${notificationId}/read`;
+      console.log("✅ Marking as read:", url);
+
+      const response = await fetch(url, {
+        method: "PUT", // ✅ Changed from PATCH to PUT
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }), // ✅ Send userId for verification
+      });
+
+      const data = await response.json();
+      console.log("✅ Mark as read response:", data);
+      return data;
     } catch (error) {
-      return { success: true };
+      console.error("❌ Error marking as read:", error);
+      throw error;
     }
   },
 
+  // ✅ FIXED: Changed from PATCH to PUT and fixed endpoint
   markAllAsRead: async (userId) => {
     try {
-      const response = await fetch(
-        `${BASE_URL}/notifications/user/${userId}/read-all`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-      return await response.json();
+      const url = `${BASE_URL}/notifications/user/${userId}/mark-all-read`;
+      console.log("✅ Marking all as read:", url);
+
+      const response = await fetch(url, {
+        method: "PUT", // ✅ Changed from PATCH to PUT
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await response.json();
+      console.log("✅ Mark all as read response:", data);
+      return data;
     } catch (error) {
-      return { success: true };
+      console.error("❌ Error marking all as read:", error);
+      throw error;
     }
   },
 
-  deleteNotification: async (notificationId) => {
+  deleteNotification: async (notificationId, userId) => {
     try {
-      const response = await fetch(
-        `${BASE_URL}/notifications/${notificationId}`,
-        {
-          method: "DELETE",
-        }
-      );
-      return await response.json();
+      const url = `${BASE_URL}/notifications/${notificationId}`;
+      console.log("🗑️ Deleting notification:", url);
+
+      const response = await fetch(url, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }), // ✅ Send userId for verification
+      });
+
+      const data = await response.json();
+      console.log("🗑️ Delete response:", data);
+      return data;
     } catch (error) {
-      return { success: true };
+      console.error("❌ Error deleting notification:", error);
+      throw error;
     }
   },
 
   deleteAllRead: async (userId) => {
     try {
-      const response = await fetch(
-        `${BASE_URL}/notifications/user/${userId}/read`,
-        {
-          method: "DELETE",
-        }
-      );
-      return await response.json();
+      const url = `${BASE_URL}/notifications/user/${userId}/read`;
+      console.log("🗑️ Deleting all read:", url);
+
+      const response = await fetch(url, {
+        method: "DELETE",
+      });
+
+      const data = await response.json();
+      console.log("🗑️ Delete all read response:", data);
+      return data;
     } catch (error) {
-      return { success: true };
+      console.error("❌ Error deleting all read:", error);
+      throw error;
     }
   },
 };
-
-// Mock data generator
-const generateMockNotifications = (userId) => [
-  {
-    id: "1",
-    userId: userId,
-    title: "Order Confirmed ✅",
-    message: "Your order #12345 has been confirmed and is being prepared.",
-    type: "order",
-    priority: "high",
-    isRead: false,
-    createdAt: new Date(Date.now() - 5 * 60000).toISOString(),
-    actionUrl: "/orders/12345",
-  },
-  {
-    id: "2",
-    userId: userId,
-    title: "Payment Successful ✅",
-    message: "Your payment of R250.00 has been processed successfully.",
-    type: "success",
-    priority: "high",
-    isRead: false,
-    createdAt: new Date(Date.now() - 15 * 60000).toISOString(),
-    actionUrl: "/payments/789",
-  },
-  {
-    id: "3",
-    userId: userId,
-    title: "Special Offer! 🎁",
-    message: "Get 20% off on your next order. Use code: SAVE20",
-    type: "promotion",
-    priority: "medium",
-    isRead: true,
-    createdAt: new Date(Date.now() - 2 * 3600000).toISOString(),
-    actionUrl: "/promotions/SAVE20",
-  },
-  {
-    id: "4",
-    userId: userId,
-    title: "Order Out for Delivery 🚚",
-    message: "Your order #12344 is on its way to you.",
-    type: "order",
-    priority: "urgent",
-    isRead: false,
-    createdAt: new Date(Date.now() - 30 * 60000).toISOString(),
-    actionUrl: "/orders/12344",
-  },
-  {
-    id: "5",
-    userId: userId,
-    title: "Wallet Credited 💵",
-    message: "R150.00 has been added to your wallet. New balance: R500.00",
-    type: "success",
-    priority: "medium",
-    isRead: true,
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    actionUrl: "/wallet",
-  },
-];
 
 // Notification Icon Component
 const NotificationIcon = ({ type, priority }) => {
@@ -239,7 +206,13 @@ const NotificationIcon = ({ type, priority }) => {
 };
 
 // Individual Notification Card
-const NotificationCard = ({ notification, onPress, onDelete, onMarkRead }) => {
+const NotificationCard = ({
+  notification,
+  onPress,
+  onDelete,
+  onMarkRead,
+  userId,
+}) => {
   const [fadeAnim] = useState(new Animated.Value(1));
   const [swipeAnim] = useState(new Animated.Value(0));
 
@@ -383,17 +356,22 @@ export default function NotificationScreen() {
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [userId, setUserId] = useState(null);
 
-  // Fetch userId on component mount
+  // ✅ Fetch userId on component mount
   useEffect(() => {
     const fetchUserId = async () => {
       const id = await getUserIdFromToken();
+      console.log("👤 User ID loaded:", id);
       setUserId(id);
     };
     fetchUserId();
   }, []);
 
+  // ✅ Fetch notifications with proper error handling
   const fetchNotifications = async (isRefresh = false) => {
-    if (!userId) return; // Don't fetch if userId is not available yet
+    if (!userId) {
+      console.log("⏳ Waiting for userId...");
+      return;
+    }
 
     try {
       if (isRefresh) {
@@ -415,11 +393,19 @@ export default function NotificationScreen() {
       );
 
       if (response.success) {
-        setNotifications(response.data.notifications);
+        // ✅ Handle the nested data structure
+        const notifArray = response.data?.notifications || [];
+        setNotifications(notifArray);
+
+        // ✅ Fetch unread count separately
         const count = await notificationAPI.getUnreadCount(userId);
         setUnreadCount(count);
+
+        console.log("✅ Loaded notifications:", notifArray.length);
+        console.log("✅ Unread count:", count);
       }
     } catch (error) {
+      console.error("❌ Error in fetchNotifications:", error);
       Alert.alert("Error", "Failed to load notifications");
     } finally {
       setLoading(false);
@@ -427,50 +413,95 @@ export default function NotificationScreen() {
     }
   };
 
+  // ✅ Fetch notifications when userId or filter changes
   useEffect(() => {
     if (userId) {
       fetchNotifications();
     }
   }, [filter, userId]);
 
+  // ✅ Mark notification as read with userId
   const handleMarkAsRead = async (notificationId) => {
+    if (!userId) return;
+
     try {
-      await notificationAPI.markAsRead(notificationId);
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n))
-      );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
+      const response = await notificationAPI.markAsRead(notificationId, userId);
+
+      if (response.success) {
+        // Update local state
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n.id === notificationId ? { ...n, isRead: true } : n
+          )
+        );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+        console.log("✅ Notification marked as read:", notificationId);
+      }
     } catch (error) {
+      console.error("❌ Error marking as read:", error);
       Alert.alert("Error", "Failed to mark as read");
     }
   };
 
+  // ✅ Mark all notifications as read
   const handleMarkAllAsRead = async () => {
-    if (!userId) return;
+    if (!userId) {
+      Alert.alert("Error", "User not found");
+      return;
+    }
+
     console.log("===========================");
-    console.log("Notification User ID: ", userId);
+    console.log("📝 Marking all as read for user:", userId);
     console.log("===========================");
+
     try {
-      await notificationAPI.markAllAsRead(userId);
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      setUnreadCount(0);
-      Alert.alert("Success", "All notifications marked as read");
+      const response = await notificationAPI.markAllAsRead(userId);
+
+      if (response.success) {
+        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+        setUnreadCount(0);
+        Alert.alert("Success", "All notifications marked as read");
+        console.log("✅ All notifications marked as read");
+      }
     } catch (error) {
+      console.error("❌ Error marking all as read:", error);
       Alert.alert("Error", "Failed to mark all as read");
     }
   };
 
+  // ✅ Delete notification with userId
   const handleDelete = async (notificationId) => {
+    if (!userId) return;
+
     try {
-      await notificationAPI.deleteNotification(notificationId);
-      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+      const response = await notificationAPI.deleteNotification(
+        notificationId,
+        userId
+      );
+
+      if (response.success) {
+        // Check if the deleted notification was unread
+        const deletedNotif = notifications.find((n) => n.id === notificationId);
+        if (deletedNotif && !deletedNotif.isRead) {
+          setUnreadCount((prev) => Math.max(0, prev - 1));
+        }
+
+        setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+        console.log("✅ Notification deleted:", notificationId);
+      }
     } catch (error) {
+      console.error("❌ Error deleting notification:", error);
       Alert.alert("Error", "Failed to delete notification");
     }
   };
 
+  // ✅ Delete all read notifications
   const handleDeleteAllRead = async () => {
-    if (!userId) return;
+    if (!userId) {
+      Alert.alert("Error", "User not found");
+      return;
+    }
+
     Alert.alert(
       "Delete Read Notifications",
       "Are you sure you want to delete all read notifications?",
@@ -481,10 +512,15 @@ export default function NotificationScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              await notificationAPI.deleteAllRead(userId);
-              setNotifications((prev) => prev.filter((n) => !n.isRead));
-              Alert.alert("Success", "Read notifications deleted");
+              const response = await notificationAPI.deleteAllRead(userId);
+
+              if (response.success) {
+                setNotifications((prev) => prev.filter((n) => !n.isRead));
+                Alert.alert("Success", "Read notifications deleted");
+                console.log("✅ All read notifications deleted");
+              }
             } catch (error) {
+              console.error("❌ Error deleting all read:", error);
               Alert.alert("Error", "Failed to delete notifications");
             }
           },
@@ -545,12 +581,14 @@ export default function NotificationScreen() {
                     }}
                   />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleMarkAllAsRead}
-                  className="bg-blue-500 p-2 rounded-lg"
-                >
-                  <CheckCheck size={18} color="white" />
-                </TouchableOpacity>
+                {unreadCount > 0 && (
+                  <TouchableOpacity
+                    onPress={handleMarkAllAsRead}
+                    className="bg-blue-500 p-2 rounded-lg"
+                  >
+                    <CheckCheck size={18} color="white" />
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   onPress={handleDeleteAllRead}
                   className="bg-red-500 p-2 rounded-lg"
@@ -634,9 +672,10 @@ export default function NotificationScreen() {
               onPress={handleNotificationPress}
               onDelete={handleDelete}
               onMarkRead={handleMarkAsRead}
+              userId={userId}
             />
           ))}
-          <View className="h-6" />
+          <View className="h-24" />
         </ScrollView>
       )}
 

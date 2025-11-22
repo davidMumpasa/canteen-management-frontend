@@ -1,7 +1,7 @@
+// hooks/useSocketHandlers.js
 import { useCallback } from "react";
-import { Animated, Alert } from "react-native";
 
-const useSocketHandlers = ({
+export const useSocketHandlers = ({
   selectedCategory,
   setProducts,
   setCategories,
@@ -9,172 +9,167 @@ const useSocketHandlers = ({
   setUnreadCount,
   loadProducts,
   loadCategories,
+  fetchUnreadCount, // ✅ Add this
   animations,
 }) => {
-  const { pulseAnim, productsOpacity } = animations;
+  const handleNotificationUpdate = useCallback(
+    (payload) => {
+      console.log("🔔 Socket notification update:", payload);
+
+      const { action, data, notification } = payload;
+      const notif = notification || data;
+
+      switch (action) {
+        case "created":
+          console.log("🔔 New notification created:", notif);
+          if (notif) {
+            setNotifications((prev) => [notif, ...prev]);
+            // ✅ Increment unread count for new notifications
+            if (!notif.isRead) {
+              setUnreadCount((prev) => prev + 1);
+            }
+          }
+          break;
+
+        case "read":
+          console.log("🔔 Notification marked as read:", notif);
+          if (notif?.id || notif?.notificationId) {
+            const notificationId = notif.id || notif.notificationId;
+            setNotifications((prev) =>
+              prev.map((n) =>
+                n.id === notificationId ? { ...n, isRead: true } : n
+              )
+            );
+            // ✅ Decrement unread count
+            setUnreadCount((prev) => Math.max(0, prev - 1));
+          }
+          break;
+
+        case "deleted":
+          console.log("🔔 Notification deleted:", notif);
+          if (notif?.id || notif?.notificationId) {
+            const notificationId = notif.id || notif.notificationId;
+            setNotifications((prev) => {
+              const deletedNotif = prev.find((n) => n.id === notificationId);
+              // ✅ Decrement unread count if deleted notification was unread
+              if (deletedNotif && !deletedNotif.isRead) {
+                setUnreadCount((prevCount) => Math.max(0, prevCount - 1));
+              }
+              return prev.filter((n) => n.id !== notificationId);
+            });
+          }
+          break;
+
+        case "allRead":
+          console.log("🔔 All notifications marked as read");
+          setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+          setUnreadCount(0);
+          break;
+
+        case "updated":
+          console.log("🔔 Notification updated:", notif);
+          if (notif?.id) {
+            setNotifications((prev) =>
+              prev.map((n) => (n.id === notif.id ? { ...n, ...notif } : n))
+            );
+            // ✅ Refresh unread count from server to ensure accuracy
+            if (fetchUnreadCount) {
+              fetchUnreadCount();
+            }
+          }
+          break;
+
+        default:
+          console.log("🔔 Unknown notification action:", action);
+      }
+    },
+    [setNotifications, setUnreadCount, fetchUnreadCount]
+  );
 
   const handleProductUpdate = useCallback(
-    (data) => {
-      if (!data) return;
+    (payload) => {
+      console.log("📦 Product update received:", payload);
+      const { action, data, product } = payload;
+      const updatedProduct = product || data;
 
-      let action, productData;
-      if (data.data && data.data.data) {
-        action = data.data.action || data.action;
-        productData = data.data.data;
-      } else if (data.data) {
-        action = data.action;
-        productData = data.data;
-      } else return;
-
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.05,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      if (!updatedProduct) return;
 
       switch (action) {
         case "created":
           if (
-            !selectedCategory ||
-            productData.categoryId === selectedCategory
+            selectedCategory === 0 ||
+            updatedProduct.categoryId === selectedCategory
           ) {
-            setProducts((prev) => [productData, ...prev]);
+            setProducts((prev) => [updatedProduct, ...prev]);
           }
           break;
+
         case "updated":
+          setProducts((prev) =>
+            prev.map((p) =>
+              p.id === updatedProduct.id ? { ...p, ...updatedProduct } : p
+            )
+          );
+          break;
+
+        case "deleted":
+          setProducts((prev) => prev.filter((p) => p.id !== updatedProduct.id));
+          break;
+
         case "availability_toggled":
           setProducts((prev) =>
             prev.map((p) =>
-              p.id === productData.id ? { ...p, ...productData } : p
+              p.id === updatedProduct.id
+                ? { ...p, available: updatedProduct.available }
+                : p
             )
           );
           break;
-        case "deleted":
-          setProducts((prev) => prev.filter((p) => p.id !== productData.id));
-          break;
+
         default:
           loadProducts();
       }
+
+      if (animations?.productsOpacity) {
+        animations.productsOpacity.setValue(0);
+        animations.startProductAnimation();
+      }
     },
-    [selectedCategory, setProducts, pulseAnim, loadProducts]
+    [selectedCategory, setProducts, loadProducts, animations]
   );
 
   const handleCategoryUpdate = useCallback(
-    (data) => {
-      if (!data) return;
+    (payload) => {
+      console.log("📁 Category update received:", payload);
+      const { action, data, category } = payload;
+      const updatedCategory = category || data;
 
-      let action, categoryData;
-      if (data.data && data.data.data) {
-        action = data.data.action || data.action;
-        categoryData = data.data.data;
-      } else if (data.data) {
-        action = data.action;
-        categoryData = data.data;
-      } else return;
-
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.05,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      if (!updatedCategory) return;
 
       switch (action) {
         case "created":
-          setCategories((prev) =>
-            [...prev, categoryData].sort(
-              (a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)
-            )
-          );
+          setCategories((prev) => [...prev, updatedCategory]);
           break;
+
         case "updated":
           setCategories((prev) =>
             prev.map((c) =>
-              c.id === categoryData.id ? { ...c, ...categoryData } : c
+              c.id === updatedCategory.id ? { ...c, ...updatedCategory } : c
             )
           );
           break;
+
         case "deleted":
-          setCategories((prev) => prev.filter((c) => c.id !== categoryData.id));
+          setCategories((prev) =>
+            prev.filter((c) => c.id !== updatedCategory.id)
+          );
           break;
+
         default:
           loadCategories();
       }
     },
-    [setCategories, pulseAnim, loadCategories]
-  );
-
-  const handleNotificationUpdate = useCallback(
-    (data) => {
-      if (!data) return;
-
-      let action, notificationData;
-      if (data.data && data.data.data) {
-        action = data.data.action || data.action;
-        notificationData = data.data.data;
-      } else if (data.data) {
-        action = data.action;
-        notificationData = data.data;
-      } else return;
-
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      switch (action) {
-        case "created":
-          setNotifications((prev) => [notificationData, ...prev]);
-          setUnreadCount((prev) => prev + 1);
-          break;
-        case "read":
-          setNotifications((prev) =>
-            prev.map((n) =>
-              n.id === notificationData.id
-                ? { ...n, isRead: true, read: true }
-                : n
-            )
-          );
-          setUnreadCount((prev) => Math.max(0, prev - 1));
-          break;
-        case "deleted":
-          setNotifications((prev) =>
-            prev.filter((n) => n.id !== notificationData.id)
-          );
-          break;
-        case "allRead":
-          setNotifications((prev) =>
-            prev.map((n) => ({ ...n, isRead: true, read: true }))
-          );
-          setUnreadCount(0);
-          break;
-        default:
-          // Refetch if needed
-          break;
-      }
-    },
-    [setNotifications, setUnreadCount, pulseAnim]
+    [setCategories, loadCategories]
   );
 
   return {
@@ -183,5 +178,3 @@ const useSocketHandlers = ({
     handleNotificationUpdate,
   };
 };
-
-export { useSocketHandlers };

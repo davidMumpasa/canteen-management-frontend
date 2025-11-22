@@ -6,6 +6,35 @@ import Ionicons from "react-native-vector-icons/Ionicons";
 import FloatingChatButton from "../components/FloatingChatButton";
 
 export default function CustomBottomNav({ state, descriptors, navigation }) {
+  // ✅ Add safety checks
+  if (!state || !descriptors || !navigation) {
+    console.error("CustomBottomNav: Missing required props", {
+      hasState: !!state,
+      hasDescriptors: !!descriptors,
+      hasNavigation: !!navigation,
+    });
+    return null;
+  }
+
+  const handleTabPress = (routeName) => {
+    switch (routeName) {
+      case "Home":
+        navigation.navigate("Home", { screen: "HomeMain" });
+        break;
+      case "Cart":
+        navigation.navigate("Cart", { screen: "CartMain" });
+        break;
+      case "Orders":
+        navigation.navigate("Orders", { screen: "OrdersMain" });
+        break;
+      case "Profile":
+        navigation.navigate("Profile", { screen: "ProfileMain" });
+        break;
+      default:
+        navigation.navigate(routeName);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <LinearGradient colors={["#ffffff", "#f8f9fa"]} style={styles.navBar}>
@@ -25,7 +54,7 @@ export default function CustomBottomNav({ state, descriptors, navigation }) {
             <TouchableOpacity
               key={route.key}
               style={styles.navItem}
-              onPress={() => navigation.navigate(route.name)}
+              onPress={() => handleTabPress(route.name)}
             >
               {isFocused ? (
                 <LinearGradient
@@ -49,12 +78,14 @@ export default function CustomBottomNav({ state, descriptors, navigation }) {
         })}
       </LinearGradient>
 
-      {/* Floating Chat Button - Now using the draggable FloatingChatButton component */}
-
       <FloatingChatButton
         onPress={() => {
-          console.log("onPress triggered in parent!");
-          navigation.navigate("Home", { screen: "Chatbot" });
+          try {
+            console.log("Navigating to Chatbot from FloatingChatButton");
+            navigation.navigate("Home", { screen: "Chatbot" });
+          } catch (error) {
+            console.error("Navigation error:", error);
+          }
         }}
         isConnected={false}
       />
@@ -76,5 +107,4 @@ const styles = StyleSheet.create({
   activeNavButton: { padding: 10, borderRadius: 30 },
   navLabel: { fontSize: 12, color: "#999", marginTop: 4 },
   navLabelActive: { color: "#764ba2", fontWeight: "bold" },
-  // Removed chatButton and chatButtonGradient styles as they are now handled by FloatingChatButton
 });

@@ -18,7 +18,6 @@ const FloatingChatButton = ({ onPress, isConnected }) => {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (evt, gestureState) => {
-        // Only become responder if actually moving
         return Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2;
       },
 
@@ -45,12 +44,10 @@ const FloatingChatButton = ({ onPress, isConnected }) => {
 
         if (distanceMoved < 10) {
           console.log("Tap detected! Navigating to Chatbot...");
-          console.log("Current route:", state.routes[state.index].name);
 
-          try {
-            navigation.navigate("Home", { screen: "Chatbot" });
-          } catch (error) {
-            console.error("Navigation error:", error);
+          // ✅ Just call the onPress prop that was passed in
+          if (onPress) {
+            onPress();
           }
         } else {
           // It's a drag - apply constraints

@@ -73,6 +73,7 @@ const HomeScreen = () => {
     setUnreadCount,
     loadProducts,
     loadCategories,
+    fetchUnreadCount,
     animations,
   });
 
@@ -293,7 +294,17 @@ const HomeScreen = () => {
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      <FloatingChatButton isConnected={isConnected} animations={animations} />
+      <FloatingChatButton
+        onPress={() => {
+          try {
+            console.log("Navigating to Chatbot from FloatingChatButton");
+            navigation.navigate("Home", { screen: "Chatbot" });
+          } catch (error) {
+            console.error("Navigation error:", error);
+          }
+        }}
+        isConnected={false}
+      />
 
       {/* {__DEV__ && (
         <DebugPanel
